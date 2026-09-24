@@ -1,7 +1,7 @@
 "use client";
 
 import { fetchReadings, fetchUnits } from "@/lib/sentinel/client";
-import { POLL_MS, SENSOR_STALE_MS, SENSORS, USE_MOCK, type SensorDef, type SensorKey } from "@/lib/sentinel/config";
+import { POLL_MS, SENSOR_STALE_MS, SENSORS, UNIT_STALE_MS, USE_MOCK, type SensorDef, type SensorKey } from "@/lib/sentinel/config";
 import type { DeviceInfo, Reading } from "@/lib/sentinel/types";
 import type { HvacStatus } from "@/data/sentinel";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -89,9 +89,13 @@ export function useSentinel() {
   return v;
 }
 
-/** Maps the firmware status string to the UI status used by badges and the 3D scene. */
-export function toUiStatus(r: Reading | undefined): HvacStatus {
+/**
+ * Maps the firmware status string to the UI status used by badges and the 3D scene.
+ * A unit whose latest reading is older than UNIT_STALE_MS is offline, whatever it last said.
+ */
+export function toUiStatus(r: Reading | undefined, now: number | null): HvacStatus {
   if (!r) return "offline";
+  if (now != null && now - r.t > UNIT_STALE_MS) return "offline";
   if (r.status === "degraded") return "maintenance";
   if (r.status === "warning") return "warning";
   if (r.status == null) return "learning";
@@ -180,5 +184,7 @@ export function useUnitLive(unitId: string) {
   const rs = byUnit.get(unitId) ?? [];
   const latest = rs.at(-1);
   const sensors = sensorLiveness(rs, lastUpdate ?? 0);
-  return { latest, status: toUiStatus(latest), health: healthMedian(rs), sensors, lastUpdate };
+  const status = toUiStatus(latest, lastUpdate);
+  // An offline unit has no current health: don't keep showing its last value.
+  return { latest, status, health: status === "offline" ? null : healthMedian(rs), sensors, lastUpdate };
 }

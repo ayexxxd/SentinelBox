@@ -17,7 +17,7 @@ const BuildingScene = dynamic(() => import("@/components/three/BuildingScene"), 
 });
 
 export default function Home() {
-  const { byUnit } = useSentinel();
+  const { byUnit, lastUpdate } = useSentinel();
   const [selected, setSelected] = useState<string | null>(null);
   const unit = HVAC_UNITS.find((u) => u.id === selected);
 
@@ -36,7 +36,7 @@ export default function Home() {
         {!unit && (
           <div className="pointer-events-none absolute bottom-4 right-4 z-20 flex flex-wrap gap-4 rounded-full border border-white/15 bg-[#060b16]/80 px-4 py-2 text-xs text-slate-300 backdrop-blur">
             {HVAC_UNITS.map((u) => {
-              const meta = STATUS_META[toUiStatus(byUnit.get(u.label)?.at(-1))];
+              const meta = STATUS_META[toUiStatus(byUnit.get(u.label)?.at(-1), lastUpdate)];
               return (
                 <span key={u.id} className="inline-flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ background: meta.hex }} />

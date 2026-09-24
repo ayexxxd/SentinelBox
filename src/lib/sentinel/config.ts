@@ -26,6 +26,9 @@ export const HEALTH_BANDS = { warning: 75, maintenance: 35 };
 /** A sensor counts as alive if its latest value is non-null and newer than this. */
 export const SENSOR_STALE_MS = 10_000;
 
+/** A unit with no reading newer than this is shown as offline (gray): unplugged or no link. */
+export const UNIT_STALE_MS = 10_000;
+
 export type SensorKey = "temperature" | "current" | "vibration";
 
 export interface SensorDef {

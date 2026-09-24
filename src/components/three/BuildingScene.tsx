@@ -114,9 +114,15 @@ export default function BuildingScene({
     HVAC_UNITS.map((u) => {
       const rs = byUnit.get(u.label) ?? [];
       const sensors = sensorLiveness(rs, lastUpdate ?? 0);
+      const status = toUiStatus(rs.at(-1), lastUpdate);
       return [
         u.id,
-        { status: toUiStatus(rs.at(-1)), health: healthMedian(rs), alive: sensors.filter((s) => s.alive).length, total: sensors.length },
+        {
+          status,
+          health: status === "offline" ? null : healthMedian(rs),
+          alive: sensors.filter((s) => s.alive).length,
+          total: sensors.length,
+        },
       ];
     })
   );

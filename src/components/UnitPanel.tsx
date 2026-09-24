@@ -180,7 +180,7 @@ function SensorCard({ s, now }: { s: SensorLive; now: number | null }) {
 
 /** In-scene panel for one HVAC unit: maintenance verdict, health %, and each sensor's reading. */
 export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: () => void }) {
-  const { status, sensors, lastUpdate, health } = useUnitLive(unit.label);
+  const { status, sensors, lastUpdate, health, latest } = useUnitLive(unit.label);
   const offline = sensors.filter((s) => !s.alive);
 
   const verdict =
@@ -214,7 +214,9 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
             detail:
               status === "learning"
                 ? "Readings are arriving, but the SentinelBox hasn't reported a health status yet."
-                : "No readings have been received from this unit's SentinelBox.",
+                : latest
+                  ? `Last reading ${ago(latest.t, lastUpdate)}. Check that this HVAC is connected to the SentinelBox.`
+                  : "No readings have been received from this unit's SentinelBox.",
             cls: "border-sky-400/30 bg-sky-500/10 text-sky-100",
             icon: "bg-sky-400 text-[#021624]",
           };
