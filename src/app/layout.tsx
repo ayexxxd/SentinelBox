@@ -1,35 +1,24 @@
+import { SentinelProvider } from "@/components/SentinelProvider";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const mono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "SentinelBox — Intelligent HVAC Maintenance",
+  title: "Sentinel Insight — CETEC HVAC Monitoring",
   description:
-    "3D interactive digital twin of CEDES building with rooftop HVAC predictive maintenance monitoring.",
+    "Sentinel Insight: 3D model of the CETEC building at Tec de Monterrey with SentinelBox HVAC sensor and maintenance status.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
-    >
+    <html lang="en" className={`${mono.variable} h-full antialiased dark`}>
       <body className="min-h-full bg-[#060b16] text-slate-100">
-        {children}
+        <SentinelProvider>{children}</SentinelProvider>
       </body>
     </html>
   );

@@ -3,6 +3,8 @@
 @theme inline {
   --color-background: #060b16;
   --color-foreground: #e6edf7;
+  --font-sans: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root {
@@ -21,7 +23,7 @@ body {
     radial-gradient(900px 500px at 10% 0%, rgba(14, 165, 233, 0.14), transparent 55%),
     var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
 }
 

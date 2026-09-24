@@ -1,28 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
+import * as THREE from "three";
 import { makeNoiseTexture } from "./glass";
 
-function Tree({
-  position,
-  scale = 1,
-  tone = 0,
-}: {
-  position: [number, number, number];
-  scale?: number;
-  tone?: number;
-}) {
+function Tree({ position, scale = 1, tone = 0 }: { position: [number, number, number]; scale?: number; tone?: number }) {
   const greens = ["#2f6b3a", "#3a7d44", "#285c33", "#43804a"];
   const c1 = greens[tone % greens.length];
   const c2 = greens[(tone + 1) % greens.length];
   return (
     <group position={position} scale={scale}>
-      {/* trunk */}
       <mesh castShadow position={[0, 0.9, 0]}>
         <cylinderGeometry args={[0.14, 0.2, 1.8, 7]} />
         <meshStandardMaterial color="#5b4232" roughness={0.9} />
       </mesh>
-      {/* canopy */}
       <mesh castShadow position={[0, 2.3, 0]}>
         <icosahedronGeometry args={[1.25, 1]} />
         <meshStandardMaterial color={c1} roughness={0.85} flatShading />
@@ -39,32 +30,32 @@ function Tree({
   );
 }
 
-function ParkingStallLines({ x = 0, z = 0 }: { x?: number; z?: number }) {
-  const stalls = useMemo(() => Array.from({ length: 9 }, (_, i) => i), []);
+function ParkingLot({ z }: { z: number }) {
+  const cars: [number, number, string][] = [
+    [-13.5, 0.5, "#cbd5e1"],
+    [-7.5, -0.6, "#f5c518"],
+    [-4.5, 0.4, "#94a3b8"],
+    [4.5, -0.4, "#e2e8f0"],
+    [10.5, 0.5, "#64748b"],
+    [13.5, -0.3, "#b91c1c"],
+  ];
   return (
-    <group position={[x, 0.02, z]}>
-      {stalls.map((i) => (
-        <mesh key={i} position={[-12 + i * 3, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[0, 0.02, z]}>
+      {Array.from({ length: 11 }, (_, i) => (
+        <mesh key={i} position={[-15 + i * 3, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[0.14, 5]} />
           <meshStandardMaterial color="#e2e8f0" roughness={0.9} />
         </mesh>
       ))}
-      {/* parked car placeholders — simple stylized volumes */}
-      {[
-        [-10.5, 0.5, "#cbd5e1"],
-        [-7.5, -0.6, "#f5c518"],
-        [-4.5, 0.4, "#94a3b8"],
-        [4.5, -0.4, "#e2e8f0"],
-        [7.5, 0.5, "#64748b"],
-      ].map(([cx, cz, color], i) => (
-        <group key={i} position={[cx as number, 0, cz as number]}>
+      {cars.map(([cx, cz, color], i) => (
+        <group key={i} position={[cx, 0, cz]}>
           <mesh castShadow position={[0, 0.55, 0]}>
-            <boxGeometry args={[2.2, 0.75, 1.1]} />
-            <meshStandardMaterial color={color as string} roughness={0.4} metalness={0.4} />
+            <boxGeometry args={[1.1, 0.75, 2.2]} />
+            <meshStandardMaterial color={color} roughness={0.4} metalness={0.4} />
           </mesh>
-          <mesh castShadow position={[0, 1.05, 0]}>
-            <boxGeometry args={[1.2, 0.5, 1]} />
-            <meshStandardMaterial color={color as string} roughness={0.35} metalness={0.4} />
+          <mesh castShadow position={[0, 1.05, 0.1]}>
+            <boxGeometry args={[1, 0.5, 1.2]} />
+            <meshStandardMaterial color={color} roughness={0.35} metalness={0.4} />
           </mesh>
         </group>
       ))}
@@ -72,126 +63,170 @@ function ParkingStallLines({ x = 0, z = 0 }: { x?: number; z?: number }) {
   );
 }
 
-export default function Environment() {
-  const concreteTex = useMemo(
-    () => (typeof document !== "undefined" ? makeNoiseTexture(21) : null),
-    []
+/**
+ * Mountain ridge as a displaced height field. `profile(x)` gives the crest height;
+ * the ridge falls off with distance from its spine (z) and gets a little noise.
+ */
+function Ridge({
+  position,
+  width,
+  depth,
+  profile,
+  low,
+  high,
+}: {
+  position: [number, number, number];
+  width: number;
+  depth: number;
+  profile: (x: number) => number;
+  low: string;
+  high: string;
+}) {
+  const geom = useMemo(() => {
+    const g = new THREE.PlaneGeometry(width, depth, 220, 30);
+    g.rotateX(-Math.PI / 2);
+    const pos = g.attributes.position as THREE.BufferAttribute;
+    const colors: number[] = [];
+    const cLow = new THREE.Color(low);
+    const cHigh = new THREE.Color(high);
+    let maxH = 1;
+    const hs: number[] = [];
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const fall = Math.exp(-((z / (depth * 0.28)) ** 2));
+      const noise = Math.sin(x * 0.21 + z * 0.13) * 1.4 + Math.sin(x * 0.53 - z * 0.37) * 0.8;
+      const h = Math.max(0, profile(x) * fall + noise * fall);
+      hs.push(h);
+      maxH = Math.max(maxH, h);
+    }
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, hs[i]);
+      const c = cLow.clone().lerp(cHigh, Math.min(1, hs[i] / maxH + 0.1));
+      colors.push(c.r, c.g, c.b);
+    }
+    g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    g.computeVertexNormals();
+    return g;
+  }, [width, depth, profile, low, high]);
+  return (
+    <mesh geometry={geom} position={position}>
+      <meshStandardMaterial vertexColors roughness={1} flatShading />
+    </mesh>
   );
+}
+
+const g = (x: number, c: number, w: number, h: number) => h * Math.exp(-(((x - c) / w) ** 2));
+
+// Cerro de la Silla: broad massif with the two sharp "saddle" horns and a notch between.
+const cerroDeLaSilla = (x: number) =>
+  Math.max(g(x, 30, 70, 30), g(x, 52, 16, 44), g(x, 62, 7, 62), g(x, 80, 6.5, 57), g(x, 71, 14, 45), g(x, 102, 22, 34));
+// Sierra Madre range to the west, lower and further back.
+const sierraMadre = (x: number) => Math.max(g(x, -60, 45, 38), g(x, -130, 40, 44), g(x, -10, 30, 26), g(x, 150, 60, 30));
+// Scaled up for the meter-based scene.
+const silla = (x: number) => cerroDeLaSilla(x / 4) * 1.7;
+const sierra = (x: number) => sierraMadre(x / 3.5) * 1.6;
+
+export default function Environment() {
+  const concreteTex = useMemo(() => (typeof document !== "undefined" ? makeNoiseTexture(21) : null), []);
   const trees = useMemo(
-    () =>
-      [
-        { p: [-14, 0, 6] as [number, number, number], s: 1.15, t: 0 },
-        { p: [-17, 0, -2] as [number, number, number], s: 1.3, t: 1 },
-        { p: [-12, 0, -8] as [number, number, number], s: 1.0, t: 2 },
-        { p: [13, 0, 7] as [number, number, number], s: 1.2, t: 1 },
-        { p: [16, 0, 0] as [number, number, number], s: 1.35, t: 3 },
-        { p: [12, 0, -8] as [number, number, number], s: 1.0, t: 0 },
-        { p: [-8, 0, 12] as [number, number, number], s: 0.95, t: 2 },
-        { p: [8, 0, 12.5] as [number, number, number], s: 1.05, t: 3 },
-        { p: [-20, 0, 10] as [number, number, number], s: 1.4, t: 0 },
-        { p: [20, 0, 10] as [number, number, number], s: 1.1, t: 2 },
-        { p: [-6, 0, -13] as [number, number, number], s: 1.0, t: 1 },
-        { p: [6, 0, -13.5] as [number, number, number], s: 1.15, t: 3 },
-      ],
+    () => [
+      { p: [-40, 0, 10], s: 1.2, t: 0 },
+      { p: [-42, 0, -2], s: 1.35, t: 1 },
+      { p: [-39, 0, -16], s: 1.05, t: 2 },
+      { p: [40, 0, 14], s: 1.25, t: 1 },
+      { p: [52, 0, 4], s: 1.4, t: 3 },
+      { p: [56, 0, -14], s: 1.0, t: 0 },
+      { p: [-12, 0, 26], s: 1.0, t: 2 },
+      { p: [34, 0, 24], s: 1.1, t: 3 },
+      { p: [-34, 0, 22], s: 1.45, t: 0 },
+      { p: [46, 0, 22], s: 1.15, t: 2 },
+      { p: [-6, 0, -32], s: 1.05, t: 1 },
+      { p: [14, 0, -33], s: 1.2, t: 3 },
+      { p: [-24, 0, -34], s: 1.3, t: 0 },
+      { p: [34, 0, -32], s: 1.1, t: 2 },
+    ] as { p: [number, number, number]; s: number; t: number }[],
     []
   );
 
   return (
     <group>
       {/* Lights */}
-      <ambientLight intensity={0.55} />
+      <ambientLight intensity={0.5} />
       <hemisphereLight args={["#c4d9f5", "#3f4a3a", 0.65]} />
       <directionalLight
-        position={[26, 34, 18]}
-        intensity={1.7}
+        position={[60, 90, 70]}
+        intensity={1.8}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-left={-35}
-        shadow-camera-right={35}
-        shadow-camera-top={45}
-        shadow-camera-bottom={-20}
+        shadow-camera-left={-80}
+        shadow-camera-right={80}
+        shadow-camera-top={80}
+        shadow-camera-bottom={-60}
+        shadow-camera-far={320}
         shadow-bias={-0.0004}
       />
-      <directionalLight position={[-20, 14, -24]} intensity={0.35} color="#9fc2ff" />
+      <directionalLight position={[-30, 20, -30]} intensity={0.35} color="#9fc2ff" />
 
-      {/* Ground: grass base */}
+      {/* Ground */}
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]}>
-        <planeGeometry args={[240, 240]} />
+        <planeGeometry args={[600, 600]} />
         <meshStandardMaterial color="#74936a" roughness={1} />
       </mesh>
 
-      {/* Concrete plaza under building */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <planeGeometry args={[42, 34]} />
-        <meshStandardMaterial
-          color="#a7b0b8"
-          roughness={0.95}
-          map={concreteTex ?? undefined}
-        />
+      {/* Plaza around the building */}
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[8, 0.01, -2]}>
+        <planeGeometry args={[100, 64]} />
+        <meshStandardMaterial color="#a7b0b8" roughness={0.95} map={concreteTex ?? undefined} />
       </mesh>
-      {/* Plaza joint lines */}
-      {[-15, -9, -3, 3, 9, 15].map((x) => (
-        <mesh key={x} position={[x, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.08, 34]} />
-          <meshStandardMaterial color="#8b949d" roughness={1} />
-        </mesh>
-      ))}
 
-      {/* Parking lot (front, like the reference photo) */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 20]}>
-        <planeGeometry args={[38, 12]} />
-        <meshStandardMaterial
-          color="#43494f"
-          roughness={0.95}
-          map={concreteTex ?? undefined}
-        />
+      {/* Parking + street in front */}
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[8, 0.015, 38]}>
+        <planeGeometry args={[40, 10]} />
+        <meshStandardMaterial color="#43494f" roughness={0.95} map={concreteTex ?? undefined} />
       </mesh>
-      <ParkingStallLines x={0} z={20} />
-
-      {/* Street */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 29]}>
-        <planeGeometry args={[90, 5]} />
+      <group position={[8, 0, 0]}>
+        <ParkingLot z={38} />
+      </group>
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 47]}>
+        <planeGeometry args={[140, 6]} />
         <meshStandardMaterial color="#31363d" roughness={0.95} />
       </mesh>
-      {Array.from({ length: 12 }).map((_, i) => (
-        <mesh key={i} position={[-26 + i * 4.8, 0.025, 29]} rotation={[-Math.PI / 2, 0, 0]}>
+      {Array.from({ length: 20 }).map((_, i) => (
+        <mesh key={i} position={[-48 + i * 5, 0.025, 47]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[2, 0.16]} />
           <meshStandardMaterial color="#facc15" roughness={0.9} />
         </mesh>
       ))}
 
-      {/* Trees */}
       {trees.map((t, i) => (
         <Tree key={i} position={t.p} scale={t.s} tone={t.t} />
       ))}
 
-      {/* Monterrey mountains backdrop */}
-      <group position={[0, 0, -78]}>
-        {[
-          { x: -45, s: [46, 20, 10] as const, c: "#7d90a8" },
-          { x: -8, s: [60, 26, 12] as const, c: "#6d8299" },
-          { x: 34, s: [48, 18, 10] as const, c: "#7d90a8" },
-          { x: 68, s: [40, 14, 10] as const, c: "#8b9cad" },
-        ].map((m, i) => (
-          <mesh key={i} position={[m.x, 0, 0]}>
-            <coneGeometry args={[m.s[0] / 2, m.s[1], 4, 1]} />
-            <meshStandardMaterial color={m.c} roughness={1} flatShading />
-          </mesh>
-        ))}
-      </group>
-
-      {/* Distant campus blocks for context */}
+      {/* Campus context: Tec's pyramid-shaped building + low blocks */}
+      <mesh castShadow position={[-62, 5, -40]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[11, 10, 4, 1]} />
+        <meshStandardMaterial color="#b98c6c" roughness={0.85} flatShading />
+      </mesh>
+      <mesh position={[-62, 5.02, -40]} rotation={[0, Math.PI / 4, 0]} scale={[0.72, 0.72, 0.72]}>
+        <coneGeometry args={[11.1, 10, 4, 1, true, Math.PI / 2, Math.PI / 2]} />
+        <meshPhysicalMaterial color="#4f7fa8" metalness={0.8} roughness={0.15} side={THREE.DoubleSide} />
+      </mesh>
       {[
-        { p: [-34, 2, -28] as const, s: [10, 4, 8] as const },
-        { p: [32, 3, -30] as const, s: [12, 6, 8] as const },
-        { p: [44, 1.5, -12] as const, s: [8, 3, 8] as const },
+        { p: [48, 3, -48], s: [14, 6, 9] },
+        { p: [74, 1.8, -12], s: [9, 3.6, 10] },
+        { p: [-66, 2, 6], s: [10, 4, 12] },
       ].map((b, i) => (
-        <mesh key={i} castShadow position={[b.p[0], b.p[1], b.p[2]]}>
-          <boxGeometry args={[b.s[0], b.s[1], b.s[2]]} />
-          <meshStandardMaterial color="#9aa7b5" roughness={0.9} />
+        <mesh key={i} castShadow position={b.p as [number, number, number]}>
+          <boxGeometry args={b.s as [number, number, number]} />
+          <meshStandardMaterial color="#c3c7c9" roughness={0.9} />
         </mesh>
       ))}
+
+      {/* Monterrey skyline: Cerro de la Silla in front, Sierra Madre behind */}
+      <Ridge position={[-420, 0, -380]} width={1100} depth={200} profile={silla} low="#4f6a45" high="#7a8c9d" />
+      <Ridge position={[160, 0, -420]} width={1100} depth={220} profile={sierra} low="#6f8196" high="#9aaabd" />
     </group>
   );
 }
