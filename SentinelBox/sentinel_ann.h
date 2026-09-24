@@ -59,9 +59,12 @@ static inline float sentinel_log2_ratio(float x, float base) {
 }
 
 static inline void sentinel_inputs(const sentinel_obs_t *x, const sentinel_obs_t *base, float in[SENTINEL_N_IN]) {
-  in[0] = sentinel_log2_ratio(x->vib_rms, base->vib_rms);
-  in[1] = sentinel_log2_ratio(x->vib_crest, base->vib_crest);
-  in[2] = sentinel_log2_ratio(x->vib_kurt, base->vib_kurt);
+  // Below the vibration floor the MPU only sees noise: compare against the floor and
+  // fade out the shape features (crest, kurtosis), full weight at 2x the floor.
+  float shape_w = fminf(fmaxf(x->vib_rms / SENTINEL_VIB_FLOOR - 1.0f, 0), 1);
+  in[0] = sentinel_log2_ratio(fmaxf(x->vib_rms, SENTINEL_VIB_FLOOR), fmaxf(base->vib_rms, SENTINEL_VIB_FLOOR));
+  in[1] = shape_w * sentinel_log2_ratio(x->vib_crest, base->vib_crest);
+  in[2] = shape_w * sentinel_log2_ratio(x->vib_kurt, base->vib_kurt);
   in[3] = sentinel_log2_ratio(x->current, base->current);
   in[4] = (x->temp - base->temp) / SENTINEL_TEMP_SCALE;
 }

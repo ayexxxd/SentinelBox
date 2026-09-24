@@ -5,7 +5,7 @@ current and temperature over the window. The network never sees absolute values:
 each feature is relative to the unit's own learned baseline, so a model trained on a
 12 cm lab fan transfers to a different fan once that fan has learned its normal.
 
-Keep this file and firmware/SentinelBoxANN/sentinel_features.h in sync.
+Keep this file and SentinelBox/sentinel_ann.h in sync.
 """
 
 import numpy as np
@@ -20,6 +20,10 @@ CLASS_HEALTH = np.array([100.0, 55.0, 10.0])
 
 LOG2_CLAMP = (-4.0, 6.0)
 TEMP_SCALE = 5.0  # °C per unit of the temperature input
+# Vibration below this RMS (g) is sensor noise (MPU6500 ~0.004-0.008 g): ratios use
+# max(rms, floor), and crest/kurtosis fade out near the floor (full weight at 2x floor).
+# The UCI fan never goes below ~0.06 g, so training data is unaffected.
+VIB_FLOOR_G = 0.02
 
 
 def vibration_stats(acc: np.ndarray) -> tuple[float, float, float]:
@@ -46,11 +50,14 @@ def model_inputs(vib_rms, vib_crest, vib_kurt, current, temp, base) -> np.ndarra
     def lr(x, b):
         return np.clip(np.log2(np.maximum(x, 1e-6) / b), *LOG2_CLAMP)
 
+    shape_w = np.clip(np.asarray(vib_rms) / VIB_FLOOR_G - 1, 0, 1)
     return np.stack(
         [
-            lr(vib_rms, base["vib_rms"]),
-            lr(vib_crest, base["vib_crest"]),
-            lr(vib_kurt, base["vib_kurt"]),
+            lr(np.maximum(vib_rms, VIB_FLOOR_G), max(base["vib_rms"], VIB_FLOOR_G))
+            if np.isscalar(base["vib_rms"])
+            else lr(np.maximum(vib_rms, VIB_FLOOR_G), np.maximum(base["vib_rms"], VIB_FLOOR_G)),
+            shape_w * lr(vib_crest, base["vib_crest"]),
+            shape_w * lr(vib_kurt, base["vib_kurt"]),
             lr(current, base["current"]),
             (np.asarray(temp) - base["temp"]) / TEMP_SCALE,
         ],

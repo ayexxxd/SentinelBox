@@ -1,5 +1,5 @@
 """Trains the SentinelBox health MLP, compares it with the current rule-based score and
-exports the weights for the ESP32 (firmware/SentinelBoxANN/sentinel_model.h).
+exports the weights for the ESP32 gateway (SentinelBox/sentinel_model.h).
 
 Usage: python build_dataset.py && python train.py
 """
@@ -14,11 +14,13 @@ import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.neural_network import MLPClassifier
 
-from features import CLASS_HEALTH, CLASSES, FEATURES, LOG2_CLAMP, TEMP_SCALE, WINDOW, model_inputs, vibration_stats
+from features import (
+    CLASS_HEALTH, CLASSES, FEATURES, LOG2_CLAMP, TEMP_SCALE, VIB_FLOOR_G, WINDOW, model_inputs, vibration_stats,
+)
 
 ROOT = Path(__file__).parent
 DATA = ROOT / "data/processed"
-FIRMWARE = ROOT.parent / "firmware/SentinelBoxANN"
+FIRMWARE = ROOT.parent / "SentinelBox"
 ARTIFACTS = ROOT / "artifacts"
 REAL = ROOT / "data/real"  # prototype recordings from collect_serial.py
 REAL_WEIGHT = 5  # each real window counts as this many synthetic ones
@@ -92,7 +94,8 @@ def export_header(model: MLPClassifier, path: Path):
         f"#define SENTINEL_LOG2_MIN {LOG2_CLAMP[0]:.1f}f\n",
         f"#define SENTINEL_LOG2_MAX {LOG2_CLAMP[1]:.1f}f\n",
         f"#define SENTINEL_TEMP_SCALE {TEMP_SCALE:.1f}f\n",
-        f"#define SENTINEL_SOFTMAX_T {SOFTMAX_T:.1f}f\n\n",
+        f"#define SENTINEL_SOFTMAX_T {SOFTMAX_T:.1f}f\n",
+        f"#define SENTINEL_VIB_FLOOR {VIB_FLOOR_G}f\n\n",
         c_array("SENTINEL_CLASS_HEALTH", CLASS_HEALTH),
     ]
     for i, (w, b) in enumerate(zip(W, B), 1):
@@ -156,7 +159,10 @@ def load_real():
         return None
     d = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
     d = d[d.vib_ok == 1]
-    d.loc[d.cur_real == 0, "current"] = d.base_current
+    # Sensor missing in this window -> at baseline; never reported at all -> neutral.
+    d.loc[d.base_current.isna(), ["current", "base_current"]] = 1.0
+    d.loc[d.base_temp.isna(), ["temp", "base_temp"]] = 0.0
+    d.loc[(d.cur_real == 0) | d.current.isna(), "current"] = d.base_current
     d.loc[(d.temp_real == 0) | d.temp.isna(), "temp"] = d.base_temp
     base = {k: d["base_" + k].to_numpy() for k in FEATURES}
     X = model_inputs(d.vib_rms.to_numpy(), d.vib_crest.to_numpy(), d.vib_kurt.to_numpy(),
