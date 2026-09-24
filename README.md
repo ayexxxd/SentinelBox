@@ -72,8 +72,11 @@ timestamp,     -- date/time, ISO 8601 UTC
 temperature,   -- °C   (null = sensor offline)
 current,       -- A
 vibration,     -- mm/s
-status,        -- "healthy" | "degraded" (null while learning)
-health_pct     -- health condition, 0–100 %
+status,        -- "healthy" | "warning" | "degraded" (null while learning)
+health_pct,    -- health condition, 0–100 %
+temp_score,    -- why: health (0–100) each sensor is costing,
+current_score, --   from the SentinelBox neural network
+vibration_score
 ```
 
 Each unit's baseline (normal temperature/current/vibration) is the average of its first
@@ -109,9 +112,10 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 
 Reading fields follow the data schema above. Only
 `unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
-it as offline). `timestamp` defaults to the server time. `status` is `healthy` or `degraded` (if left out it
-is derived from `sentinel_status`: NORMAL/MAINTENANCE REQUIRED). `health_score` is accepted
-as an alias of `health_pct`. Other fields are ignored.
+it as offline). `timestamp` defaults to the server time. `status` is `healthy`, `warning` or `degraded` (if left out it
+is derived from `sentinel_status`: NORMAL/WARNING/MAINTENANCE REQUIRED). `health_score` is accepted
+as an alias of `health_pct`. `temp_score`, `current_score` and `vibration_score` (0–100) are shown in
+the unit panel as the cause of an alert. Other fields are ignored.
 
 ```bash
 curl -X POST http://localhost:3000/api/readings \

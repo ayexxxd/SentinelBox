@@ -1,4 +1,4 @@
-export type HealthStatus = "healthy" | "degraded";
+export type HealthStatus = "healthy" | "warning" | "degraded";
 
 /** One reading as stored in the database (plus the per-unit baselines the API adds). */
 export interface RawReading {
@@ -8,10 +8,14 @@ export interface RawReading {
   temperature: number | null;
   current: number | null;
   vibration: number | null;
-  /** "healthy" | "degraded"; null while the unit is learning its baseline. */
+  /** "healthy" | "warning" | "degraded"; null while the unit is learning its baseline. */
   status: HealthStatus | null;
-  /** Health in percent: 100 − (0.40·S_I + 0.35·S_T + 0.25·S_V). */
+  /** Health in percent, from the SentinelBox neural network (100 = the unit's learned normal). */
   health_pct: number | null;
+  /** Why: health lost (0–100) when only that sensor deviates from its normal. */
+  temp_score: number | null;
+  current_score: number | null;
+  vibration_score: number | null;
   // Learned normal values, computed per unit by the API (not stored per row).
   baseline_temperature: number | null;
   baseline_current: number | null;

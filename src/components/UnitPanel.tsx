@@ -1,9 +1,9 @@
 "use client";
 
 import { type HvacUnit } from "@/data/sentinel";
-import { RULES } from "@/lib/sentinel/config";
-import { fmtNum } from "@/lib/sentinel/format";
-import { Activity, CircleCheck, Loader, Thermometer, Wrench, X, Zap, type LucideIcon } from "lucide-react";
+import { HEALTH_BANDS } from "@/lib/sentinel/config";
+import { fmtNum, fmtSigned } from "@/lib/sentinel/format";
+import { Activity, CircleCheck, Loader, Thermometer, TriangleAlert, Wrench, X, Zap, type LucideIcon } from "lucide-react";
 import { HEALTH_WINDOW, useUnitLive, type SensorLive } from "./SentinelProvider";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -19,12 +19,17 @@ function ago(t: number | null, now: number | null) {
   return `${Math.floor(s / 60)}m ${s % 60}s ago`;
 }
 
-/** Health bar color follows the maintenance rule: below 70 % is maintenance territory. */
+/** Health bar color follows the network's bands: normal / warning / maintenance. */
 function healthTone(pct: number) {
-  if (pct >= 85) return { fill: "#34d399", text: "text-emerald-300", label: "Good" };
-  if (pct >= RULES.healthThreshold) return { fill: "#fcd34d", text: "text-amber-200", label: "Fair" };
-  return { fill: "#fb923c", text: "text-orange-300", label: "Poor" };
+  if (pct >= HEALTH_BANDS.warning) return { fill: "#34d399", text: "text-emerald-300", label: "Normal" };
+  if (pct >= HEALTH_BANDS.maintenance) return { fill: "#fcd34d", text: "text-amber-200", label: "Warning range" };
+  return { fill: "#fb923c", text: "text-orange-300", label: "Maintenance range" };
 }
+
+const MARKS = [
+  { at: HEALTH_BANDS.maintenance, title: "Below this: maintenance range" },
+  { at: HEALTH_BANDS.warning, title: "Below this: warning range" },
+];
 
 /** General health of the unit: median of its last 5 health_pct readings, as a 0–100 % bar. */
 function HealthBar({ pct }: { pct: number | null }) {
@@ -48,18 +53,85 @@ function HealthBar({ pct }: { pct: number | null }) {
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct ?? 0}%`, background: tone?.fill ?? "transparent" }}
         />
-        <span
-          className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded bg-slate-300/70"
-          style={{ left: `${RULES.healthThreshold}%` }}
-          title={`Below ${RULES.healthThreshold}% maintenance is required`}
-        />
+        {MARKS.map((m) => (
+          <span
+            key={m.at}
+            className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded bg-slate-300/70"
+            style={{ left: `${m.at}%` }}
+            title={m.title}
+          />
+        ))}
       </div>
       <div className="relative mt-1 h-3 text-[10px] text-slate-500">
         <span className="absolute left-0">0%</span>
-        <span className="absolute -translate-x-1/2" style={{ left: `${RULES.healthThreshold}%` }}>
-          {RULES.healthThreshold}%
-        </span>
+        {MARKS.map((m) => (
+          <span key={m.at} className="absolute -translate-x-1/2" style={{ left: `${m.at}%` }}>
+            {m.at}%
+          </span>
+        ))}
         <span className="absolute right-0">100%</span>
+      </div>
+    </div>
+  );
+}
+
+/** Impact (0–100) below this is treated as noise: the sensor is not a cause. */
+const IMPACT_MIN = 15;
+
+function impactTone(v: number) {
+  if (v >= 60) return { fill: "#fb923c", text: "text-orange-300" };
+  if (v >= IMPACT_MIN) return { fill: "#fcd34d", text: "text-amber-200" };
+  return { fill: "#34d399", text: "text-emerald-300" };
+}
+
+/** "+4.2 °C vs normal (+17%)" for one sensor, or null if there is nothing to compare. */
+function deltaText(s: SensorLive) {
+  if (s.value == null || s.baseline == null) return null;
+  const d = fmtSigned(s.value - s.baseline, s.sensor.decimals, ` ${s.sensor.unit}`);
+  return s.deviation == null ? `${d} vs normal` : `${d} vs normal (${fmtSigned(s.deviation, 0)})`;
+}
+
+/**
+ * Why the network flagged the unit: how much health each sensor is costing, from the
+ * per-sensor scores the SentinelBox computes (the network run with only that sensor
+ * deviating). Sorted by impact, so the technician sees the cause first.
+ */
+function WhyPanel({ sensors, status }: { sensors: SensorLive[]; status: string }) {
+  const scored = sensors.filter((s) => s.impact != null).sort((a, b) => (b.impact ?? 0) - (a.impact ?? 0));
+  if (!scored.length) return null;
+  const causes = scored.filter((s) => (s.impact ?? 0) >= IMPACT_MIN);
+  const alerting = status === "warning" || status === "maintenance";
+  const headline = causes.length
+    ? `Cause: ${causes.map((s) => s.sensor.label.toLowerCase()).join(" + ")}`
+    : alerting
+      ? "No single sensor stands out"
+      : "All sensors within their learned normal";
+
+  return (
+    <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <p className="text-sm font-semibold text-slate-300">Why</p>
+      <p className="text-[11px] text-slate-500">health each sensor is costing, per the SentinelBox neural network</p>
+      <p className={`mt-3 text-lg font-semibold ${causes.length ? impactTone(causes[0].impact ?? 0).text : "text-emerald-300"}`}>
+        {headline}
+      </p>
+      <div className="mt-3 flex flex-col gap-3">
+        {scored.map((s) => {
+          const v = s.impact ?? 0;
+          const tone = impactTone(v);
+          const delta = deltaText(s);
+          return (
+            <div key={s.sensor.key}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-slate-200">{s.sensor.label}</span>
+                <span className={`tabular-nums font-semibold ${tone.text}`}>{fmtNum(v, 0)}</span>
+              </div>
+              <div className="mt-1 h-2 rounded-full bg-white/[0.08]">
+                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${v}%`, background: tone.fill }} />
+              </div>
+              {delta && v >= IMPACT_MIN && <p className="mt-1 text-[11px] text-slate-400">{delta}</p>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -112,7 +184,15 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
   const offline = sensors.filter((s) => !s.alive);
 
   const verdict =
-    status === "maintenance"
+    status === "warning"
+      ? {
+          Icon: TriangleAlert,
+          title: "Warning: early degradation",
+          detail: "The unit is drifting from its learned normal. No shutdown needed yet; plan an inspection.",
+          cls: "border-amber-300/40 bg-amber-400/10 text-amber-50",
+          icon: "bg-amber-300 text-[#1f1402]",
+        }
+      : status === "maintenance"
       ? {
           Icon: Wrench,
           title: "Maintenance required",
@@ -172,6 +252,8 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
       </div>
 
       <HealthBar pct={health} />
+
+      <WhyPanel sensors={sensors} status={status} />
 
       <h3 className="mt-7 text-sm font-semibold text-slate-300">
         Sensors <span className="text-slate-500">· {sensors.length - offline.length}/{sensors.length} alive</span>

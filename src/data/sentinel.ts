@@ -1,7 +1,7 @@
 // Static site description: which units exist and where they sit in the 3D model.
 // Live telemetry, status and KPIs come from SentinelProvider (src/lib/sentinel).
 
-export type HvacStatus = "healthy" | "maintenance" | "learning" | "offline";
+export type HvacStatus = "healthy" | "warning" | "maintenance" | "learning" | "offline";
 
 export interface HvacUnit {
   id: string; // e.g. "hvac-01"
@@ -47,6 +47,13 @@ export const STATUS_META: Record<
     text: "text-emerald-300",
     hex: "#34d399",
     message: "Operating within its learned baseline.",
+  },
+  warning: {
+    label: "Warning",
+    color: "bg-amber-300",
+    text: "text-amber-200",
+    hex: "#fcd34d",
+    message: "Early degradation in 3 of the last 5 readings.",
   },
   maintenance: {
     label: "Maintenance required",

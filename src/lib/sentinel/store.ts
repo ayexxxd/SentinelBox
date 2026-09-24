@@ -11,10 +11,21 @@ export const BASELINE_READINGS = 45;
 /** The columns actually stored for each reading. */
 export type StoredReading = Pick<
   RawReading,
-  "timestamp" | "unit_id" | "temperature" | "current" | "vibration" | "status" | "health_pct"
+  | "timestamp"
+  | "unit_id"
+  | "temperature"
+  | "current"
+  | "vibration"
+  | "status"
+  | "health_pct"
+  | "temp_score"
+  | "current_score"
+  | "vibration_score"
 >;
 
 const SENSOR_FIELDS = ["temperature", "current", "vibration"] as const;
+const SCORE_FIELDS = ["temp_score", "current_score", "vibration_score"] as const;
+const STATUSES: HealthStatus[] = ["healthy", "warning", "degraded"];
 
 export type ValidationResult =
   | { ok: true; reading: StoredReading; clockFixed: boolean }
@@ -29,8 +40,9 @@ const MAX_FUTURE_MS = 60_000;
  * (a disconnected sensor); `timestamp` defaults to now (ISO string or epoch ms). A timestamp
  * before 2024 or more than a minute in the future is replaced by server time.
  * `health_score` is accepted as an alias of `health_pct`. If `status` is missing it is
- * derived from `sentinel_status` (NORMAL → healthy, MAINTENANCE REQUIRED → degraded).
- * Any other fields are ignored.
+ * derived from `sentinel_status` (NORMAL → healthy, WARNING → warning,
+ * MAINTENANCE REQUIRED → degraded). `temp_score`, `current_score` and `vibration_score`
+ * (0–100) say how much health each sensor is costing. Any other fields are ignored.
  */
 export function validateReading(input: unknown, index = 0): ValidationResult {
   const at = `readings[${index}]`;
@@ -68,15 +80,23 @@ export function validateReading(input: unknown, index = 0): ValidationResult {
   const health = num("health_pct", r.health_pct ?? r.health_score);
   if (typeof health === "string") return { ok: false, error: health };
   if (health != null && (health < 0 || health > 100)) return { ok: false, error: `${at}.health_pct: 0–100` };
+  const scores = {} as Record<(typeof SCORE_FIELDS)[number], number | null>;
+  for (const f of SCORE_FIELDS) {
+    const v = num(f, r[f]);
+    if (typeof v === "string") return { ok: false, error: v };
+    if (v != null && (v < 0 || v > 100)) return { ok: false, error: `${at}.${f}: 0–100` };
+    scores[f] = v;
+  }
 
   let status: HealthStatus | null = null;
   if (r.status != null) {
-    const s = String(r.status).toLowerCase();
-    if (s !== "healthy" && s !== "degraded") return { ok: false, error: `${at}.status: "healthy" or "degraded"` };
+    const s = String(r.status).toLowerCase() as HealthStatus;
+    if (!STATUSES.includes(s)) return { ok: false, error: `${at}.status: "healthy", "warning" or "degraded"` };
     status = s;
   } else if (r.sentinel_status != null) {
     const s = String(r.sentinel_status).toUpperCase();
-    status = s === STATUS.MAINTENANCE ? "degraded" : s === STATUS.NORMAL ? "healthy" : null;
+    status =
+      s === STATUS.MAINTENANCE ? "degraded" : s === STATUS.WARNING ? "warning" : s === STATUS.NORMAL ? "healthy" : null;
   } else if (health != null) {
     status = "healthy";
   }
@@ -90,11 +110,21 @@ export function validateReading(input: unknown, index = 0): ValidationResult {
       ...sensors,
       status,
       health_pct: health,
+      ...scores,
     },
   };
 }
 
-const COLUMNS = ["unit_id", "timestamp", "temperature", "current", "vibration", "status", "health_pct"] as const;
+const COLUMNS = [
+  "unit_id",
+  "timestamp",
+  "temperature",
+  "current",
+  "vibration",
+  "status",
+  "health_pct",
+  ...SCORE_FIELDS,
+] as const;
 
 /** Readings older than this are deleted automatically. 0 disables cleanup. */
 export const RETENTION_DAYS = Number(process.env.SENTINEL_RETENTION_DAYS ?? 7);
@@ -177,6 +207,7 @@ export function queryReadings({ since, unitId, limit }: { since?: number; unitId
       ORDER BY timestamp DESC, id DESC LIMIT ?
     )
     SELECT p.timestamp, p.unit_id, p.temperature, p.current, p.vibration, p.status, p.health_pct,
+           p.temp_score, p.current_score, p.vibration_score,
            b.baseline_temperature, b.baseline_current, b.baseline_vibration
     FROM picked p LEFT JOIN baselines b ON b.unit_id = p.unit_id
     ORDER BY p.timestamp ASC, p.id ASC`;

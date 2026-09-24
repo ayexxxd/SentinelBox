@@ -13,7 +13,8 @@ struct UnitState {
   sentinel_obs_t learnSum;
   int learned;  // ventanas aprendidas; >= LEARN_WINDOWS = baseline listo
   int nCur, nTemp;
-  bool history[PERSIST_WINDOW];
+  uint8_t history[PERSIST_WINDOW];  // clase de la red en las últimas lecturas (0/1/2)
   int historyPos;
   float healthSmooth;
+  float scoreSmooth[3];  // vibración, corriente, temperatura (suavizados como la salud)
 };

@@ -112,7 +112,8 @@ interface SimState {
   rand: () => number;
   samples: Record<Channel, number>[];
   baseline: Record<Channel, number> | null;
-  window: boolean[];
+  /** Severity of the last readings: 0 normal, 1 warning, 2 maintenance. */
+  window: number[];
   nextT: number;
 }
 
@@ -168,6 +169,9 @@ export class Simulator {
       vibration: round(values.vibration, 3),
       status: null,
       health_pct: null,
+      temp_score: null,
+      current_score: null,
+      vibration_score: null,
       baseline_temperature: null,
       baseline_current: null,
       baseline_vibration: null,
@@ -200,11 +204,13 @@ export class Simulator {
       RULES.weights.current * s.current + RULES.weights.temperature * s.temperature + RULES.weights.vibration * s.vibration;
     const health = round(100 - anomaly, 1);
 
-    const condition =
-      health < RULES.healthThreshold || Math.max(s.temperature, s.current, s.vibration) > RULES.sensorScoreLimit;
-    st.window.push(condition);
+    const worst = Math.max(s.temperature, s.current, s.vibration);
+    const level =
+      health < RULES.healthThreshold || worst > RULES.sensorScoreLimit ? 2 : health < RULES.warningThreshold || worst > 40 ? 1 : 0;
+    st.window.push(level);
     if (st.window.length > RULES.persistence.window) st.window.shift();
-    const hits = st.window.filter(Boolean).length;
+    const hits = (min: number) => st.window.filter((l) => l >= min).length;
+    const status = hits(2) >= RULES.persistence.hits ? "degraded" : hits(1) >= RULES.persistence.hits ? "warning" : "healthy";
 
     return {
       ...reading,
@@ -212,7 +218,10 @@ export class Simulator {
       baseline_current: round(baseline.current, 4),
       baseline_vibration: round(baseline.vibration, 3),
       health_pct: health,
-      status: hits >= RULES.persistence.hits ? "degraded" : "healthy",
+      temp_score: s.temperature,
+      current_score: s.current,
+      vibration_score: s.vibration,
+      status,
     };
   }
 }

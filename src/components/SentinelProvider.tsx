@@ -1,7 +1,7 @@
 "use client";
 
 import { fetchReadings, fetchUnits } from "@/lib/sentinel/client";
-import { POLL_MS, SENSOR_STALE_MS, SENSORS, USE_MOCK, type SensorDef } from "@/lib/sentinel/config";
+import { POLL_MS, SENSOR_STALE_MS, SENSORS, USE_MOCK, type SensorDef, type SensorKey } from "@/lib/sentinel/config";
 import type { DeviceInfo, Reading } from "@/lib/sentinel/types";
 import type { HvacStatus } from "@/data/sentinel";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -93,8 +93,33 @@ export function useSentinel() {
 export function toUiStatus(r: Reading | undefined): HvacStatus {
   if (!r) return "offline";
   if (r.status === "degraded") return "maintenance";
+  if (r.status === "warning") return "warning";
   if (r.status == null) return "learning";
   return "healthy";
+}
+
+/** Score field sent by the SentinelBox for each sensor: health lost because of it (0–100). */
+export const SCORE_FIELD = {
+  temperature: "temp_score",
+  current: "current_score",
+  vibration: "vibration_score",
+} as const;
+
+/** Readings the "why" is averaged over, so a single noisy reading doesn't flip the cause. */
+export const WHY_WINDOW = 3;
+
+/** Average score per sensor over the last WHY_WINDOW readings that carry scores. */
+export function sensorImpact(readings: Reading[]): Record<SensorKey, number | null> {
+  const out = {} as Record<SensorKey, number | null>;
+  for (const key of Object.keys(SCORE_FIELD) as SensorKey[]) {
+    const vals: number[] = [];
+    for (let i = readings.length - 1; i >= 0 && vals.length < WHY_WINDOW; i--) {
+      const v = readings[i][SCORE_FIELD[key]];
+      if (v != null) vals.push(v);
+    }
+    out[key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  }
+  return out;
 }
 
 export interface SensorLive {
@@ -107,10 +132,13 @@ export interface SensorLive {
   deviation: number | null;
   /** Time of the last non-null value, if any was seen. */
   lastSeen: number | null;
+  /** Health this sensor is costing (0–100), averaged over the last readings. */
+  impact: number | null;
 }
 
 /** Liveness of every sensor on one unit, from its recent readings. */
 export function sensorLiveness(readings: Reading[], now: number): SensorLive[] {
+  const impact = sensorImpact(readings);
   return SENSORS.map((sensor) => {
     let lastSeen: number | null = null;
     let value: number | null = null;
@@ -126,7 +154,7 @@ export function sensorLiveness(readings: Reading[], now: number): SensorLive[] {
     const alive = latest != null && latest[sensor.key] != null && now - latest.t < SENSOR_STALE_MS;
     const baseline = latest?.[sensor.baselineField] ?? null;
     const deviation = alive && value != null && baseline ? ((value - baseline) / baseline) * 100 : null;
-    return { sensor, alive, value: alive ? value : null, baseline, deviation, lastSeen };
+    return { sensor, alive, value: alive ? value : null, baseline, deviation, lastSeen, impact: impact[sensor.key] };
   });
 }
 

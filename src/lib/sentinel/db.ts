@@ -14,8 +14,11 @@ const SCHEMA = /* sql */ `
     temperature REAL,                                              -- °C, NULL = sensor offline
     current     REAL,                                              -- A
     vibration   REAL,                                              -- mm/s
-    status      TEXT CHECK (status IN ('healthy', 'degraded')),    -- NULL while learning
-    health_pct  REAL CHECK (health_pct BETWEEN 0 AND 100)          -- health condition, %
+    status      TEXT CHECK (status IN ('healthy', 'warning', 'degraded')), -- NULL while learning
+    health_pct  REAL CHECK (health_pct BETWEEN 0 AND 100),         -- health condition, %
+    temp_score      REAL CHECK (temp_score BETWEEN 0 AND 100),     -- health lost due to each sensor
+    current_score   REAL CHECK (current_score BETWEEN 0 AND 100),
+    vibration_score REAL CHECK (vibration_score BETWEEN 0 AND 100)
   );
   CREATE INDEX IF NOT EXISTS readings_ts ON readings (timestamp);
   CREATE INDEX IF NOT EXISTS readings_unit_ts ON readings (unit_id, timestamp);
@@ -32,7 +35,7 @@ const SCHEMA = /* sql */ `
 `;
 
 // Bump when the schema changes. Older databases are rebuilt (they only hold prototype data).
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const g = globalThis as unknown as { __sentinelDb?: DatabaseSync; __sentinelDbVersion?: number };
 

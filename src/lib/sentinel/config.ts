@@ -4,16 +4,24 @@ export const POLL_MS = Number(process.env.NEXT_PUBLIC_SENTINEL_POLL_MS) || 2000;
 
 export const STATUS = {
   NORMAL: "NORMAL",
+  WARNING: "WARNING",
   MAINTENANCE: "MAINTENANCE REQUIRED",
   LEARNING: "LEARNING",
 } as const;
 
 export const RULES = {
   healthThreshold: 70, // HealthScore < 70 -> maintenance
+  warningThreshold: 85, // HealthScore < 85 -> warning (early degradation)
   sensorScoreLimit: 80, // any single sensor score > 80 -> maintenance
   persistence: { hits: 3, window: 5 }, // 3 of the last 5 readings
   weights: { current: 0.4, temperature: 0.35, vibration: 0.25 },
 };
+
+/**
+ * Health bands of the SentinelBox neural network (health_pct is the expected health over
+ * its NORMAL / WARNING / MAINTENANCE probabilities: ~100 / ~50 / ~0 once rescaled).
+ */
+export const HEALTH_BANDS = { warning: 75, maintenance: 35 };
 
 /** A sensor counts as alive if its latest value is non-null and newer than this. */
 export const SENSOR_STALE_MS = 10_000;

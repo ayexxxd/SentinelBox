@@ -21,7 +21,9 @@
 // Cada 2 s: 100 muestras del MPU a 50 Hz + promedio de
 // lo que mandó el HVAC -> red -> POST /readings.
 // Las primeras LEARN_WINDOWS ventanas de cada HVAC
-// aprenden su "normal" (status/health = null).
+// aprenden su "normal" (status/health = null). Después:
+// status healthy / warning / degraded (3 de 5 lecturas), health_pct y
+// el "por qué": temp_score, current_score, vibration_score (0-100).
 //
 // Cableado (un solo puerto UART):
 //   HVAC TX (GPIO27) -> este RX (GPIO26)
@@ -67,7 +69,7 @@ float fanRpm(const String &id) {
 
 // --- Red neuronal ---
 const int LEARN_WINDOWS = 45;                    // 90 s de operación normal por HVAC
-const int PERSIST_HITS = 3;                      // 3 de las últimas PERSIST_WINDOW lecturas
+const int PERSIST_HITS = 3;  // advertencia / mantenimiento: 3 de las últimas PERSIST_WINDOW lecturas
 const float HEALTH_EMA = 0.35f;                  // suavizado de health_pct en el tiempo
 const uint32_t SAMPLE_US = 1000000 / 50;         // 50 Hz, igual que los datos de entrenamiento
 const unsigned long HVAC_TIMEOUT_MS = 3000;      // sin datos del HVAC -> no se postea
@@ -176,6 +178,7 @@ UnitState *unitFor(const String &id) {
   u->learned = u->nCur = u->nTemp = u->historyPos = 0;
   memset(&u->learnSum, 0, sizeof(u->learnSum));
   u->healthSmooth = NAN;
+  u->scoreSmooth[0] = u->scoreSmooth[1] = u->scoreSmooth[2] = NAN;
   prefs.begin("sentinel", true);
   if (prefs.getBytesLength(nvsKey(id).c_str()) == sizeof(u->baseline)) {
     prefs.getBytes(nvsKey(id).c_str(), &u->baseline, sizeof(u->baseline));
@@ -191,6 +194,7 @@ void startLearning(UnitState *u) {
   memset(&u->learnSum, 0, sizeof(u->learnSum));
   memset(u->history, 0, sizeof(u->history));
   u->healthSmooth = NAN;
+  u->scoreSmooth[0] = u->scoreSmooth[1] = u->scoreSmooth[2] = NAN;
   Serial.printf("Aprendiendo baseline de %s...\n", u->id.c_str());
 }
 
@@ -368,15 +372,24 @@ void processWindow() {
   sentinel_evaluate(&in, &base, &r);
   float processingMs = (micros() - t0) / 1000.0f;
 
-  u.healthSmooth = isnan(u.healthSmooth) ? r.health_pct : u.healthSmooth + HEALTH_EMA * (r.health_pct - u.healthSmooth);
-  u.history[u.historyPos] = r.cls == 2;
+  auto ema = [](float &s, float v) { s = isnan(s) ? v : s + HEALTH_EMA * (v - s); };
+  ema(u.healthSmooth, r.health_pct);
+  ema(u.scoreSmooth[0], r.vibration_score);
+  ema(u.scoreSmooth[1], r.current_score);
+  ema(u.scoreSmooth[2], r.temp_score);
+  u.history[u.historyPos] = r.cls;
   u.historyPos = (u.historyPos + 1) % PERSIST_WINDOW;
-  int hits = 0;
-  for (bool h : u.history) hits += h;
-  bool maintenance = hits >= PERSIST_HITS;
+  int warnHits = 0, maintHits = 0;
+  for (uint8_t c : u.history) warnHits += c >= 1, maintHits += c == 2;
+  bool maintenance = maintHits >= PERSIST_HITS;
+  bool warning = !maintenance && warnHits >= PERSIST_HITS;
 
-  json += ",\"status\":\"" + String(maintenance ? "degraded" : "healthy") + "\"";
-  json += ",\"health_pct\":" + num(u.healthSmooth, 1) + "}";
+  json += ",\"status\":\"" + String(maintenance ? "degraded" : warning ? "warning" : "healthy") + "\"";
+  json += ",\"health_pct\":" + num(u.healthSmooth, 1);
+  // Por qué: salud que cuesta cada sensor (la red con solo ese sensor desviado).
+  json += ",\"vibration_score\":" + num(u.scoreSmooth[0], 1);
+  json += ",\"current_score\":" + num(u.scoreSmooth[1], 1);
+  json += ",\"temp_score\":" + num(u.scoreSmooth[2], 1) + "}";
   int code = postJson("/readings", json);
   nTx++;
   Serial.printf("TX %s -> HTTP %d\n", json.c_str(), code);
@@ -384,7 +397,7 @@ void processWindow() {
   static const char *CLS[] = {"NORMAL", "WARNING", "MAINTENANCE"};
   Serial.printf("%s salud %.1f%% | red: %s | scores vib %.0f cur %.0f temp %.0f | %s | %.3f ms\n",
                 u.id.c_str(), u.healthSmooth, CLS[r.cls], r.vibration_score, r.current_score, r.temp_score,
-                maintenance ? "MANTENIMIENTO" : "ok", processingMs);
+                maintenance ? "MANTENIMIENTO" : warning ? "ADVERTENCIA" : "ok", processingMs);
   // Features crudas + baseline para armar el dataset real (ml/collect_serial.py).
   Serial.printf("CSV,%lu,%s,%d,%d,%d,%.6f,%.4f,%.4f,%.5f,%.3f,%.6f,%.4f,%.4f,%.5f,%.3f,%d,%.1f\n", millis(),
                 u.id.c_str(), vibOk, !isnan(obs.current), !isnan(obs.temp), obs.vib_rms, obs.vib_crest,
