@@ -2,7 +2,7 @@
 // same scoring rules the ESP firmware uses. Runs in the browser when no API is
 // configured, and on the server to seed / stream simulated data into the database.
 
-import { RULES, STATUS } from "./config";
+import { RULES } from "./config";
 import type { DeviceInfo, RawReading } from "./types";
 
 const STEP_MS = 2000;
@@ -159,7 +159,6 @@ export class Simulator {
       for (const ev of unit.events) if (ev.sensor === key) v += eventEffect(ev, c, unit.base[key]);
       values[key] = v;
     }
-    const real = unit.events.some((ev) => ev.real && c >= ev.s && c <= ev.e) ? "PERTURBATION" : "NORMAL";
 
     const reading: RawReading = {
       timestamp: new Date(t).toISOString(),
@@ -167,17 +166,11 @@ export class Simulator {
       temperature: round(values.temperature, 2),
       current: round(values.current, 4),
       vibration: round(values.vibration, 3),
+      status: null,
+      health_pct: null,
       baseline_temperature: null,
       baseline_current: null,
       baseline_vibration: null,
-      temp_score: null,
-      current_score: null,
-      vibration_score: null,
-      health_pct: null,
-      status: null,
-      sentinel_status: STATUS.LEARNING,
-      real_condition: real,
-      processing_ms: round(2.6 + Math.abs(gaussian(rand)) * 0.45 + (rand() < 0.03 ? 1.4 : 0), 2),
     };
 
     for (const d of unit.dropouts) if (c >= d.s && c <= d.e) reading[d.sensor] = null;
@@ -218,12 +211,8 @@ export class Simulator {
       baseline_temperature: round(baseline.temperature, 2),
       baseline_current: round(baseline.current, 4),
       baseline_vibration: round(baseline.vibration, 3),
-      temp_score: s.temperature,
-      current_score: s.current,
-      vibration_score: s.vibration,
       health_pct: health,
       status: hits >= RULES.persistence.hits ? "degraded" : "healthy",
-      sentinel_status: hits >= RULES.persistence.hits ? STATUS.MAINTENANCE : STATUS.NORMAL,
     };
   }
 }

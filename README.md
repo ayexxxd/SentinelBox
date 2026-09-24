@@ -63,26 +63,22 @@ Temperature perturbations can be introduced with a hair dryer, while vibration c
 
 ## Data schema
 
-Each reading should store at least:
+Each reading stores:
 
 ```text
-timestamp,
-unit_id,
-temperature,
-current,
-vibration,
-baseline_temperature,
-baseline_current,
-baseline_vibration,
-temp_score,
-current_score,
-vibration_score,
-health_pct,          -- health in %, 0–100
-status,              -- "healthy" | "degraded" (null while learning)
-sentinel_status,
-real_condition,
-processing_ms
+id,            -- assigned by the database
+unit_id,       -- e.g. HVAC-01
+timestamp,     -- date/time, ISO 8601 UTC
+temperature,   -- °C   (null = sensor offline)
+current,       -- A
+vibration,     -- mm/s
+status,        -- "healthy" | "degraded" (null while learning)
+health_pct     -- health condition, 0–100 %
 ```
+
+Each unit's baseline (normal temperature/current/vibration) is the average of its first
+45 readings; the API adds it to every reading it returns, so the dashboard can show the
+deviation from normal.
 
 ## Planned implementation
 
@@ -112,9 +108,9 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 
 Reading fields follow the data schema above. Only
 `unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
-it as offline). `timestamp` defaults to the server time. `sentinel_status` is `NORMAL`,
-`MAINTENANCE REQUIRED` or `LEARNING`; `status` (`healthy`/`degraded`) is derived from it
-when not sent. `health_score` is accepted as an alias of `health_pct`.
+it as offline). `timestamp` defaults to the server time. `status` is `healthy` or `degraded` (if left out it
+is derived from `sentinel_status`: NORMAL/MAINTENANCE REQUIRED). `health_score` is accepted
+as an alias of `health_pct`. Other fields are ignored.
 
 ```bash
 curl -X POST http://localhost:3000/api/readings \

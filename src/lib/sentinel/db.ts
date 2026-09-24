@@ -8,28 +8,17 @@ import { DatabaseSync } from "node:sqlite";
 
 const SCHEMA = /* sql */ `
   CREATE TABLE IF NOT EXISTS readings (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    t                    INTEGER NOT NULL,          -- epoch ms, for range queries
-    timestamp            TEXT    NOT NULL,          -- ISO 8601, as sent to clients
-    unit_id              TEXT    NOT NULL,
-    temperature          REAL,
-    current              REAL,
-    vibration            REAL,
-    baseline_temperature REAL,
-    baseline_current     REAL,
-    baseline_vibration   REAL,
-    temp_score           REAL,
-    current_score        REAL,
-    vibration_score      REAL,
-    health_pct           REAL CHECK (health_pct BETWEEN 0 AND 100),   -- health in %
-    status               TEXT CHECK (status IN ('healthy', 'degraded')), -- NULL while learning
-    sentinel_status      TEXT    NOT NULL,
-    real_condition       TEXT,
-    processing_ms        REAL,
-    source               TEXT    NOT NULL DEFAULT 'device'   -- 'device' or 'simulator'
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id     TEXT NOT NULL,
+    timestamp   TEXT NOT NULL,                                     -- ISO 8601 UTC
+    temperature REAL,                                              -- °C, NULL = sensor offline
+    current     REAL,                                              -- A
+    vibration   REAL,                                              -- mm/s
+    status      TEXT CHECK (status IN ('healthy', 'degraded')),    -- NULL while learning
+    health_pct  REAL CHECK (health_pct BETWEEN 0 AND 100)          -- health condition, %
   );
-  CREATE INDEX IF NOT EXISTS readings_t ON readings (t);
-  CREATE INDEX IF NOT EXISTS readings_unit_t ON readings (unit_id, t);
+  CREATE INDEX IF NOT EXISTS readings_ts ON readings (timestamp);
+  CREATE INDEX IF NOT EXISTS readings_unit_ts ON readings (unit_id, timestamp);
 
   CREATE TABLE IF NOT EXISTS units (
     unit_id        TEXT PRIMARY KEY,
@@ -43,7 +32,7 @@ const SCHEMA = /* sql */ `
 `;
 
 // Bump when the schema changes. Older databases are rebuilt (they only hold prototype data).
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const g = globalThis as unknown as { __sentinelDb?: DatabaseSync; __sentinelDbVersion?: number };
 

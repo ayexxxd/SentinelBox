@@ -1,6 +1,6 @@
 import { checkIngestKey } from "@/lib/sentinel/api-auth";
 import { addReadings, clearStore, queryReadings, validateReading } from "@/lib/sentinel/store";
-import type { RawReading } from "@/lib/sentinel/types";
+import type { StoredReading } from "@/lib/sentinel/store";
 
 const MAX_BATCH = 500;
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   if (items.length === 0) return Response.json({ error: "No readings" }, { status: 400 });
   if (items.length > MAX_BATCH) return Response.json({ error: `At most ${MAX_BATCH} readings per request` }, { status: 413 });
 
-  const readings: RawReading[] = [];
+  const readings: StoredReading[] = [];
   for (let i = 0; i < items.length; i++) {
     const v = validateReading(items[i], i);
     if (!v.ok) return Response.json({ error: v.error }, { status: 400 });
