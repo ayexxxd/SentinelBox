@@ -25,11 +25,15 @@ export interface SensorDef {
   label: string;
   unit: string;
   decimals: number;
+  baselineField: "baseline_temperature" | "baseline_current" | "baseline_vibration";
 }
 
+// Sensors shown in the dashboard (pressure is still used internally by the firmware score).
 export const SENSORS: SensorDef[] = [
-  { key: "temperature", label: "Temperature", unit: "°C", decimals: 1 },
-  { key: "current", label: "Current", unit: "A", decimals: 3 },
-  { key: "pressure", label: "Pressure", unit: "Pa", decimals: 1 },
-  { key: "vibration", label: "Vibration", unit: "mm/s", decimals: 2 },
+  { key: "temperature", label: "Temperature", unit: "°C", decimals: 1, baselineField: "baseline_temperature" },
+  { key: "current", label: "Current", unit: "A", decimals: 3, baselineField: "baseline_current" },
+  { key: "vibration", label: "Vibration", unit: "mm/s", decimals: 2, baselineField: "baseline_vibration" },
 ];
+
+/** |deviation| (%) from the learned baseline at which a reading is shown as elevated / abnormal. */
+export const DEVIATION_BANDS = { elevated: 5, abnormal: 15 };

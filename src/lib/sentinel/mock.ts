@@ -17,7 +17,7 @@ type Key = keyof typeof TOLERANCE;
 interface PerturbationEvent {
   s: number;
   e: number;
-  sensor: Key;
+  sensor: Key | "vibration";
   mag: number;
   rel?: boolean;
   tau: number;
@@ -46,7 +46,7 @@ const UNITS: SimUnit[] = [
     learnS: 90,
     base: { temperature: 24.5, current: 0.32, pressure: 118, vibration: 1.1 },
     noise: { temperature: 0.12, current: 0.004, pressure: 1.4, vibration: 0.06 },
-    dropouts: [{ sensor: "pressure", s: 820, e: 870 }],
+    dropouts: [],
     events: [
       // Hair dryer on the intake: controlled temperature perturbation.
       { s: 220, e: 300, sensor: "temperature", mag: 9, tau: 12, real: true },
@@ -55,6 +55,8 @@ const UNITS: SimUnit[] = [
       // Motor inrush transient while the unit is actually healthy (false-alarm source).
       { s: 760, e: 772, sensor: "current", mag: 0.22, rel: true, tau: 2, real: false },
       { s: 900, e: 960, sensor: "temperature", mag: 10, tau: 10, real: true },
+      // Loose fan mount: vibration climbs (tracked, not part of the health score).
+      { s: 330, e: 470, sensor: "vibration", mag: 0.35, rel: true, tau: 20, real: true },
     ],
     ram: [41.6, 320],
     flash: [418, 4096],
@@ -109,7 +111,7 @@ interface SimState {
   unit: SimUnit;
   rand: () => number;
   samples: Record<Channel, number>[];
-  baseline: Record<Key, number> | null;
+  baseline: Record<Channel, number> | null;
   window: boolean[];
   readings: RawReading[];
   nextT: number;
@@ -154,6 +156,7 @@ function step(st: SimState, t: number): RawReading {
     baseline_temperature: null,
     baseline_current: null,
     baseline_pressure: null,
+    baseline_vibration: null,
     temp_score: null,
     current_score: null,
     pressure_score: null,
@@ -171,8 +174,8 @@ function step(st: SimState, t: number): RawReading {
   }
 
   if (!st.baseline) {
-    const b = {} as Record<Key, number>;
-    for (const key of Object.keys(TOLERANCE) as Key[]) {
+    const b = {} as Record<Channel, number>;
+    for (const key of Object.keys(unit.base) as Channel[]) {
       b[key] = st.samples.reduce((s, x) => s + x[key], 0) / st.samples.length;
     }
     st.baseline = b;
@@ -201,6 +204,7 @@ function step(st: SimState, t: number): RawReading {
     baseline_temperature: round(baseline.temperature, 2),
     baseline_current: round(baseline.current, 4),
     baseline_pressure: round(baseline.pressure, 2),
+    baseline_vibration: round(baseline.vibration, 3),
     temp_score: s.temperature,
     current_score: s.current,
     pressure_score: s.pressure,

@@ -32,7 +32,7 @@ function injectUv(shader: THREE.WebGLProgramParametersWithUniforms) {
 
 /**
  * Precast concrete cladding: panel joints on a grid, per-panel tone variation,
- * fine ribbing running up the slope (the corrugated finish in close-ups) that
+ * fine ribbing running along the slab (the corrugated finish in close-ups) that
  * fades out with distance, and vertical weathering streaks.
  */
 export function makeConcreteMaterial({
@@ -65,9 +65,9 @@ export function makeConcreteMaterial({
           float joint = 1.0 - smoothstep(0.015, 0.045 + w, min(dEdge.x, dEdge.y));
           float tone = 0.93 + 0.1 * sbHash(cell);
           float streak = sbNoise(vec2(vMuv.x * 1.3, vMuv.y * 0.08)) * 0.08;
-          // ribs run up the slope (u is across the face); fade before they alias
-          float ribFade = clamp(1.0 - fwidth(vMuv.x) * 6.0, 0.0, 1.0) * uRibs;
-          float rib = 0.5 + 0.5 * sin(vMuv.x * 6.2831 / 0.22);
+          // ribs run along the slab's long edge (u); fade before they alias
+          float ribFade = clamp(1.0 - fwidth(vMuv.y) * 6.0, 0.0, 1.0) * uRibs;
+          float rib = 0.5 + 0.5 * sin(vMuv.y * 6.2831 / 0.22);
           diffuseColor.rgb *= tone * (1.0 - streak) * mix(1.0, 0.62, joint) * (1.0 - 0.1 * rib * ribFade);
         }`
       );
@@ -156,47 +156,6 @@ export function slabGeometry(long: number, short: number, thick: number) {
     muv[i * 2 + 1] = uv[1];
   }
   g.setAttribute("muv", new THREE.BufferAttribute(muv, 2));
-  return g;
-}
-
-type V3 = [number, number, number];
-
-/**
- * Convex hexahedron from 8 corners: bottom b0..b3 then top t0..t3, each ordered
- * front-left, front-right, back-right, back-left. Flat-shaded, one material group
- * per face (front, right, back, left, top, bottom), meter UVs with u running along
- * each face's bottom edge and v up the face.
- */
-export function hexahedron(c: V3[]) {
-  const [b0, b1, b2, b3, t0, t1, t2, t3] = c.map((p) => new THREE.Vector3(...p));
-  const faces = [
-    [b0, b1, t1, t0],
-    [b1, b2, t2, t1],
-    [b2, b3, t3, t2],
-    [b3, b0, t0, t3],
-    [t0, t1, t2, t3],
-    [b3, b2, b1, b0],
-  ];
-  const pos: number[] = [];
-  const muv: number[] = [];
-  const g = new THREE.BufferGeometry();
-  faces.forEach((q, fi) => {
-    const o = q[0];
-    const u = q[1].clone().sub(o).normalize();
-    const n = q[1].clone().sub(o).cross(q[3].clone().sub(o)).normalize();
-    const v = n.clone().cross(u).normalize();
-    for (const i of [0, 1, 2, 0, 2, 3]) {
-      const p = q[i];
-      pos.push(p.x, p.y, p.z);
-      const d = p.clone().sub(o);
-      muv.push(d.dot(u), d.dot(v));
-    }
-    g.addGroup(fi * 6, 6, fi);
-  });
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute("muv", new THREE.Float32BufferAttribute(muv, 2));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute(muv, 2));
-  g.computeVertexNormals();
   return g;
 }
 

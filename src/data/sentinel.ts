@@ -7,7 +7,7 @@ export interface HvacUnit {
   id: string; // e.g. "hvac-01"
   label: string; // unit_id sent by the device, e.g. "HVAC-01"
   description: string;
-  position: [number, number, number]; // placement on the mechanical terrace
+  position: [number, number, number]; // placement on the bridge roof
 }
 
 export interface BuildingInfo {
@@ -26,14 +26,14 @@ export const HVAC_UNITS: HvacUnit[] = [
   {
     id: "hvac-01",
     label: "HVAC-01",
-    description: "Cooling tower · west cell",
-    position: [13, 0, 2.5],
+    description: "Bridge roof · west cell",
+    position: [-1, 0, -8],
   },
   {
     id: "hvac-02",
     label: "HVAC-02",
-    description: "Cooling tower · east cell",
-    position: [23.5, 0, 2.5],
+    description: "Bridge roof · east cell",
+    position: [9, 0, -8],
   },
 ];
 

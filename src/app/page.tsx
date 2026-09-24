@@ -28,7 +28,7 @@ export default function Home() {
         <BuildingScene selected={selected} onSelect={setSelected} />
 
         {unit && (
-          <div className="pointer-events-none absolute inset-y-4 right-4 z-30 flex max-w-[calc(100%-2rem)] items-start">
+          <div className="pointer-events-none absolute inset-y-4 right-4 z-30 flex w-[min(600px,calc(100%-2rem))]">
             <UnitPanel unit={unit} onClose={() => setSelected(null)} />
           </div>
         )}

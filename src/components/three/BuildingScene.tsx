@@ -16,9 +16,9 @@ import { makeSkyScene } from "./materials";
 
 /* Camera views, matched to the reference photos (street view, drone view) plus the terrace. */
 const PRESETS = {
-  street: { label: "Street", Icon: Building2, pos: [-40, 4, 150], tgt: [-4, 21, -4] },
-  aerial: { label: "Aerial", Icon: Plane, pos: [85, 85, 110], tgt: [-6, 12, -4] },
-  terrace: { label: "HVAC", Icon: Snowflake, pos: [44, 17, 38], tgt: [18, 5, 1] },
+  street: { label: "Street", Icon: Building2, pos: [-75, 6, 150], tgt: [2, 20, -4] },
+  aerial: { label: "Aerial", Icon: Plane, pos: [110, 100, 100], tgt: [4, 14, -6] },
+  terrace: { label: "HVAC", Icon: Snowflake, pos: [4, 46, 52], tgt: [4, 18, 2] },
 } as const;
 type ViewKey = keyof typeof PRESETS;
 
@@ -50,6 +50,15 @@ function CameraRig({ pos, tgt }: { pos: readonly number[]; tgt: readonly number[
   useEffect(() => {
     animating.current = true;
   }, [destPos, destTgt]);
+  // Any drag/zoom by the user ends the fly-to, so the camera is never held in place.
+  useEffect(() => {
+    if (!controls) return;
+    const stop = () => {
+      animating.current = false;
+    };
+    controls.addEventListener("start", stop);
+    return () => controls.removeEventListener("start", stop);
+  }, [controls]);
 
   useFrame((_, rawDt) => {
     if (!animating.current || !controls) return;
@@ -57,7 +66,7 @@ function CameraRig({ pos, tgt }: { pos: readonly number[]; tgt: readonly number[
     camera.position.lerp(destPos, 1 - Math.exp(-3.2 * dt));
     controls.target.lerp(destTgt, 1 - Math.exp(-3.2 * dt));
     controls.update();
-    if (camera.position.distanceTo(destPos) < 0.1 && controls.target.distanceTo(destTgt) < 0.1) {
+    if (camera.position.distanceTo(destPos) < 0.5 && controls.target.distanceTo(destTgt) < 0.5) {
       animating.current = false;
     }
   });
@@ -113,8 +122,8 @@ export default function BuildingScene({
     const u = HVAC_UNITS.find((h) => h.id === selected);
     if (!u) return PRESETS[view];
     const [x, , z] = u.position;
-    // aim right of the unit so it sits left of the side panel
-    return { pos: [x + 20, ROOF_Y + 10, z + 20], tgt: [x + 6, ROOF_Y + 2, z] } as const;
+    // high view from the open front of the gap; aimed right of the unit so it sits left of the panel
+    return { pos: [x + 7, ROOF_Y + 28, z + 28], tgt: [x + 7, ROOF_Y, z] } as const;
   }, [selected, view]);
 
   return (

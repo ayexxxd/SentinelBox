@@ -10,6 +10,7 @@ export interface RawReading {
   baseline_temperature: number | null;
   baseline_current: number | null;
   baseline_pressure: number | null;
+  baseline_vibration: number | null;
   temp_score: number | null;
   current_score: number | null;
   pressure_score: number | null;

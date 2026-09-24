@@ -101,6 +101,10 @@ export interface SensorLive {
   sensor: SensorDef;
   alive: boolean;
   value: number | null;
+  /** Learned normal value (null while the baseline is being learned). */
+  baseline: number | null;
+  /** Deviation from the learned normal, in percent (signed). */
+  deviation: number | null;
   /** Time of the last non-null value, if any was seen. */
   lastSeen: number | null;
 }
@@ -120,7 +124,9 @@ export function sensorLiveness(readings: Reading[], now: number): SensorLive[] {
     }
     const latest = readings.at(-1);
     const alive = latest != null && latest[sensor.key] != null && now - latest.t < SENSOR_STALE_MS;
-    return { sensor, alive, value: alive ? value : null, lastSeen };
+    const baseline = latest?.[sensor.baselineField] ?? null;
+    const deviation = alive && value != null && baseline ? ((value - baseline) / baseline) * 100 : null;
+    return { sensor, alive, value: alive ? value : null, baseline, deviation, lastSeen };
   });
 }
 

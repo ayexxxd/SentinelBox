@@ -131,20 +131,20 @@ export default function Environment() {
   const concreteTex = useMemo(() => (typeof document !== "undefined" ? makeNoiseTexture(21) : null), []);
   const trees = useMemo(
     () => [
-      { p: [-40, 0, 10], s: 1.2, t: 0 },
-      { p: [-42, 0, -2], s: 1.35, t: 1 },
+      { p: [-48, 0, 12], s: 1.2, t: 0 },
+      { p: [-50, 0, -2], s: 1.35, t: 1 },
       { p: [-39, 0, -16], s: 1.05, t: 2 },
       { p: [40, 0, 14], s: 1.25, t: 1 },
-      { p: [52, 0, 4], s: 1.4, t: 3 },
-      { p: [56, 0, -14], s: 1.0, t: 0 },
-      { p: [-12, 0, 26], s: 1.0, t: 2 },
+      { p: [52, 0, 16], s: 1.4, t: 3 },
+      { p: [60, 0, -24], s: 1.0, t: 0 },
+      { p: [-32, 0, 32], s: 1.0, t: 2 },
       { p: [34, 0, 24], s: 1.1, t: 3 },
-      { p: [-34, 0, 22], s: 1.45, t: 0 },
+      { p: [-36, 0, 14], s: 1.45, t: 0 },
       { p: [46, 0, 22], s: 1.15, t: 2 },
-      { p: [-6, 0, -32], s: 1.05, t: 1 },
-      { p: [14, 0, -33], s: 1.2, t: 3 },
-      { p: [-24, 0, -34], s: 1.3, t: 0 },
-      { p: [34, 0, -32], s: 1.1, t: 2 },
+      { p: [-38, 0, -30], s: 1.05, t: 1 },
+      { p: [4, 0, -40], s: 1.2, t: 3 },
+      { p: [-40, 0, -46], s: 1.3, t: 0 },
+      { p: [40, 0, -40], s: 1.1, t: 2 },
     ] as { p: [number, number, number]; s: number; t: number }[],
     []
   );
@@ -176,8 +176,8 @@ export default function Environment() {
       </mesh>
 
       {/* Plaza around the building */}
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[8, 0.01, -2]}>
-        <planeGeometry args={[100, 64]} />
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[10, 0.01, -14]}>
+        <planeGeometry args={[130, 76]} />
         <meshStandardMaterial color="#a7b0b8" roughness={0.95} map={concreteTex ?? undefined} />
       </mesh>
 
