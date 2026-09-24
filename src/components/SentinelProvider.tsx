@@ -130,11 +130,27 @@ export function sensorLiveness(readings: Reading[], now: number): SensorLive[] {
   });
 }
 
-/** Latest reading, UI status and sensor liveness for one unit. */
+/** Readings the health figure is taken over: median of the last N health values. */
+export const HEALTH_WINDOW = 5;
+
+/** Median of the last `HEALTH_WINDOW` health_pct values (ignores readings without one). */
+export function healthMedian(readings: Reading[]): number | null {
+  const vals: number[] = [];
+  for (let i = readings.length - 1; i >= 0 && vals.length < HEALTH_WINDOW; i--) {
+    const h = readings[i].health_pct;
+    if (h != null) vals.push(h);
+  }
+  if (!vals.length) return null;
+  vals.sort((a, b) => a - b);
+  const mid = vals.length >> 1;
+  return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+}
+
+/** Latest reading, UI status, health (median of the last 5) and sensor liveness for one unit. */
 export function useUnitLive(unitId: string) {
   const { byUnit, lastUpdate } = useSentinel();
   const rs = byUnit.get(unitId) ?? [];
   const latest = rs.at(-1);
   const sensors = sensorLiveness(rs, lastUpdate ?? 0);
-  return { latest, status: toUiStatus(latest), sensors, lastUpdate };
+  return { latest, status: toUiStatus(latest), health: healthMedian(rs), sensors, lastUpdate };
 }

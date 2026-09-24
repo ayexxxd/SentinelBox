@@ -101,6 +101,7 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 | `POST` | `/api/readings` | Send one reading (JSON object) or a batch (array, max 500). Returns `201 { accepted }`. |
 | `GET` | `/api/readings?since=<ISO or epoch ms>&unit_id=<id>&limit=<n>` | Readings, oldest first. The dashboard polls this. |
 | `DELETE` | `/api/readings` | Clear stored readings and units (demo reset). |
+| `GET` | `/api/readings/export?unit_id=<id>` | Download readings as CSV (all units if `unit_id` is left out). |
 | `POST` | `/api/units` | Register device info: `{ unit_id, chip?, ram_used_kb?, ram_total_kb?, flash_used_kb?, flash_total_kb? }`. |
 | `GET` | `/api/units` | Units seen so far, with `last_seen`. |
 | `GET` | `/api/simulate` | Simulator status and database totals. |
@@ -129,6 +130,12 @@ so there is nothing native to install (Node 22.13+).
 The dashboard reads from the API when `.env.local` contains
 `NEXT_PUBLIC_SENTINEL_API_URL=/api`; remove it to fall back to the in-browser simulator.
 Set `SENTINEL_INGEST_KEY` to require an `x-api-key` header on writes.
+Readings older than `SENTINEL_RETENTION_DAYS` (default 7; `0` keeps everything) are deleted
+automatically. Export them first with `/api/readings/export` if you need them.
+
+Timestamps: a device timestamp before 2024 (an ESP clock that never synced) or more than a
+minute in the future is replaced by the server's time, and the response reports
+`timestamps_replaced`. Simplest for the ESPs: leave `timestamp` out.
 
 ### Simulating data
 

@@ -16,11 +16,18 @@ export type StoredReading = Pick<
 
 const SENSOR_FIELDS = ["temperature", "current", "vibration"] as const;
 
-export type ValidationResult = { ok: true; reading: StoredReading } | { ok: false; error: string };
+export type ValidationResult =
+  | { ok: true; reading: StoredReading; clockFixed: boolean }
+  | { ok: false; error: string };
+
+/** Device timestamps outside this window are treated as a bad clock and replaced by server time. */
+const EARLIEST_VALID = Date.UTC(2024, 0, 1); // an ESP without NTP starts at 1970
+const MAX_FUTURE_MS = 60_000;
 
 /**
  * Validates one incoming reading. Only `unit_id` is required; sensor values may be null
- * (a disconnected sensor); `timestamp` defaults to now (ISO string or epoch ms).
+ * (a disconnected sensor); `timestamp` defaults to now (ISO string or epoch ms). A timestamp
+ * before 2024 or more than a minute in the future is replaced by server time.
  * `health_score` is accepted as an alias of `health_pct`. If `status` is missing it is
  * derived from `sentinel_status` (NORMAL → healthy, MAINTENANCE REQUIRED → degraded).
  * Any other fields are ignored.
@@ -34,10 +41,17 @@ export function validateReading(input: unknown, index = 0): ValidationResult {
     return { ok: false, error: `${at}.unit_id: required string (max 64 chars)` };
   }
 
-  let t = Date.now();
+  const now = Date.now();
+  let t = now;
+  let clockFixed = false;
   if (r.timestamp != null) {
     t = typeof r.timestamp === "number" ? r.timestamp : Date.parse(String(r.timestamp));
     if (!Number.isFinite(t)) return { ok: false, error: `${at}.timestamp: must be ISO 8601 or epoch ms` };
+    // Unsynced or drifting device clock: keep the reading, stamp it with server time.
+    if (t < EARLIEST_VALID || t > now + MAX_FUTURE_MS) {
+      t = now;
+      clockFixed = true;
+    }
   }
 
   const num = (field: string, v: unknown): number | null | string => {
@@ -69,6 +83,7 @@ export function validateReading(input: unknown, index = 0): ValidationResult {
 
   return {
     ok: true,
+    clockFixed,
     reading: {
       timestamp: new Date(t).toISOString(),
       unit_id: r.unit_id.trim(),
@@ -80,6 +95,22 @@ export function validateReading(input: unknown, index = 0): ValidationResult {
 }
 
 const COLUMNS = ["unit_id", "timestamp", "temperature", "current", "vibration", "status", "health_pct"] as const;
+
+/** Readings older than this are deleted automatically. 0 disables cleanup. */
+export const RETENTION_DAYS = Number(process.env.SENTINEL_RETENTION_DAYS ?? 7);
+const PRUNE_EVERY_MS = 10 * 60_000;
+const g = globalThis as unknown as { __sentinelLastPrune?: number };
+
+/** Deletes readings older than RETENTION_DAYS (at most once every 10 minutes unless forced). */
+export function pruneOldReadings(force = false): number {
+  if (!(RETENTION_DAYS > 0)) return 0;
+  const now = Date.now();
+  if (!force && g.__sentinelLastPrune && now - g.__sentinelLastPrune < PRUNE_EVERY_MS) return 0;
+  g.__sentinelLastPrune = now;
+  const cutoff = new Date(now - RETENTION_DAYS * 86_400_000).toISOString();
+  const res = db().prepare("DELETE FROM readings WHERE timestamp < ?").run(cutoff);
+  return Number(res.changes);
+}
 
 /** Inserts readings (one transaction) and bumps each unit's last_seen. */
 export function addReadings(readings: StoredReading[]) {
@@ -98,6 +129,17 @@ export function addReadings(readings: StoredReading[]) {
     }
     for (const [unit, ts] of latest) seen.run(unit, ts);
   });
+  pruneOldReadings();
+}
+
+/** All readings (optionally one unit) as CSV, oldest first. */
+export function exportCsv(unitId?: string): string {
+  const rows = db()
+    .prepare(`SELECT id, ${COLUMNS.join(", ")} FROM readings ${unitId ? "WHERE unit_id = ?" : ""} ORDER BY timestamp, id`)
+    .all(...(unitId ? [unitId] : [])) as Record<string, unknown>[];
+  const header = ["id", ...COLUMNS];
+  const cell = (v: unknown) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  return [header.join(","), ...rows.map((r) => header.map((h) => cell(r[h])).join(","))].join("\n") + "\n";
 }
 
 /**
@@ -168,7 +210,8 @@ export function listUnits() {
 }
 
 export function stats() {
-  return db().prepare("SELECT COUNT(*) AS n, MIN(timestamp) AS first, MAX(timestamp) AS last FROM readings").get();
+  const totals = db().prepare("SELECT COUNT(*) AS n, MIN(timestamp) AS first, MAX(timestamp) AS last FROM readings").get();
+  return { ...totals, retention_days: RETENTION_DAYS };
 }
 
 export function clearStore() {
