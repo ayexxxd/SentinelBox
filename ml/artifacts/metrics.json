@@ -1,0 +1,50 @@
+{
+  "architecture": [
+    5,
+    16,
+    8,
+    3
+  ],
+  "params": 259,
+  "test_accuracy": 0.9936,
+  "confusion": [
+    [
+      3288,
+      9,
+      0
+    ],
+    [
+      0,
+      1768,
+      25
+    ],
+    [
+      0,
+      17,
+      2893
+    ]
+  ],
+  "per_scenario_accuracy": {
+    "cur": 0.996,
+    "healthy": 0.997,
+    "multi": 0.975,
+    "temp": 0.994,
+    "vib": 0.993
+  },
+  "kpi_ann": {
+    "detection_rate": 1.0,
+    "false_alarm_rate": 0.0027,
+    "missed_anomaly_rate": 0.0
+  },
+  "kpi_rule": {
+    "detection_rate": 0.9647,
+    "false_alarm_rate": 0.0003,
+    "missed_anomaly_rate": 0.0353
+  },
+  "c_parity": {
+    "max_prob_diff": 1.1168807982908646e-06,
+    "max_health_diff": 3.939103304517744e-05,
+    "same_class": 1.0,
+    "max_vib_stat_rel_diff": 1.8513971173136374e-06
+  }
+}

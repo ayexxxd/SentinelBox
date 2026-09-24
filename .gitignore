@@ -26,3 +26,7 @@ node_modules/
 
 # SQLite database (created by the app)
 data/
+__pycache__/
+
+# Firmware WiFi credentials
+firmware/**/secrets.h
