@@ -1,0 +1,8 @@
+fault,severity,fan_power_ratio,airflow_ratio
+FilterRestriction_10%,minor,1.049,0.923
+FilterRestriction_20%,moderate,1.103,0.842
+FilterRestriction_50%,severe,1.289,0.568
+FanOutletBlockage,severe,1.084,0.207
+Fouling_Cooling_Airside_Minor,minor,1.023,0.965
+Fouling_Cooling_Airside_Moderate,moderate,1.095,0.856
+Fouling_Cooling_Airside_Severe,severe,1.236,0.643

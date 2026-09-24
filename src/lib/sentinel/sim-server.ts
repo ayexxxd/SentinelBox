@@ -25,7 +25,7 @@ export function seed(minutes: number, reset: boolean) {
   if (reset) clearStore();
   state.sim = new Simulator(Date.now() - minutes * 60_000);
   const readings = state.sim.advanceTo(Date.now());
-  addReadings(readings, "simulator");
+  addReadings(readings);
   registerUnits();
   state.written += readings.length;
   return readings.length;
@@ -38,7 +38,7 @@ export function start() {
   registerUnits();
   state.timer = setInterval(() => {
     const readings = state.sim!.advanceTo(Date.now());
-    addReadings(readings, "simulator");
+    addReadings(readings);
     state.written += readings.length;
   }, TICK_MS);
   return true;

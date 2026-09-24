@@ -1,6 +1,6 @@
-// Reading schema from the project brief (README "Data schema"), without pressure.
-
 export type HealthStatus = "healthy" | "degraded";
+
+/** One reading as stored in the database (plus the per-unit baselines the API adds). */
 export interface RawReading {
   timestamp: string;
   unit_id: string;
@@ -8,19 +8,14 @@ export interface RawReading {
   temperature: number | null;
   current: number | null;
   vibration: number | null;
+  /** "healthy" | "degraded"; null while the unit is learning its baseline. */
+  status: HealthStatus | null;
+  /** Health in percent: 100 − (0.40·S_I + 0.35·S_T + 0.25·S_V). */
+  health_pct: number | null;
+  // Learned normal values, computed per unit by the API (not stored per row).
   baseline_temperature: number | null;
   baseline_current: number | null;
   baseline_vibration: number | null;
-  temp_score: number | null;
-  current_score: number | null;
-  vibration_score: number | null;
-  /** Health in percent: 100 − (0.40·S_I + 0.35·S_T + 0.25·S_V). */
-  health_pct: number | null;
-  /** "healthy" | "degraded"; null while the baseline is being learned. */
-  status: HealthStatus | null;
-  sentinel_status: string;
-  real_condition: string | null;
-  processing_ms: number | null;
 }
 
 export interface Reading extends RawReading {

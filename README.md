@@ -63,26 +63,22 @@ Temperature perturbations can be introduced with a hair dryer, while vibration c
 
 ## Data schema
 
-Each reading should store at least:
+Each reading stores:
 
 ```text
-timestamp,
-unit_id,
-temperature,
-current,
-vibration,
-baseline_temperature,
-baseline_current,
-baseline_vibration,
-temp_score,
-current_score,
-vibration_score,
-health_pct,          -- health in %, 0–100
-status,              -- "healthy" | "degraded" (null while learning)
-sentinel_status,
-real_condition,
-processing_ms
+id,            -- assigned by the database
+unit_id,       -- e.g. HVAC-01
+timestamp,     -- date/time, ISO 8601 UTC
+temperature,   -- °C   (null = sensor offline)
+current,       -- A
+vibration,     -- mm/s
+status,        -- "healthy" | "degraded" (null while learning)
+health_pct     -- health condition, 0–100 %
 ```
+
+Each unit's baseline (normal temperature/current/vibration) is the average of its first
+45 readings; the API adds it to every reading it returns, so the dashboard can show the
+deviation from normal.
 
 ## Planned implementation
 
@@ -105,6 +101,7 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 | `POST` | `/api/readings` | Send one reading (JSON object) or a batch (array, max 500). Returns `201 { accepted }`. |
 | `GET` | `/api/readings?since=<ISO or epoch ms>&unit_id=<id>&limit=<n>` | Readings, oldest first. The dashboard polls this. |
 | `DELETE` | `/api/readings` | Clear stored readings and units (demo reset). |
+| `GET` | `/api/readings/export?unit_id=<id>` | Download readings as CSV (all units if `unit_id` is left out). |
 | `POST` | `/api/units` | Register device info: `{ unit_id, chip?, ram_used_kb?, ram_total_kb?, flash_used_kb?, flash_total_kb? }`. |
 | `GET` | `/api/units` | Units seen so far, with `last_seen`. |
 | `GET` | `/api/simulate` | Simulator status and database totals. |
@@ -112,9 +109,9 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 
 Reading fields follow the data schema above. Only
 `unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
-it as offline). `timestamp` defaults to the server time. `sentinel_status` is `NORMAL`,
-`MAINTENANCE REQUIRED` or `LEARNING`; `status` (`healthy`/`degraded`) is derived from it
-when not sent. `health_score` is accepted as an alias of `health_pct`.
+it as offline). `timestamp` defaults to the server time. `status` is `healthy` or `degraded` (if left out it
+is derived from `sentinel_status`: NORMAL/MAINTENANCE REQUIRED). `health_score` is accepted
+as an alias of `health_pct`. Other fields are ignored.
 
 ```bash
 curl -X POST http://localhost:3000/api/readings \
@@ -133,6 +130,12 @@ so there is nothing native to install (Node 22.13+).
 The dashboard reads from the API when `.env.local` contains
 `NEXT_PUBLIC_SENTINEL_API_URL=/api`; remove it to fall back to the in-browser simulator.
 Set `SENTINEL_INGEST_KEY` to require an `x-api-key` header on writes.
+Readings older than `SENTINEL_RETENTION_DAYS` (default 7; `0` keeps everything) are deleted
+automatically. Export them first with `/api/readings/export` if you need them.
+
+Timestamps: a device timestamp before 2024 (an ESP clock that never synced) or more than a
+minute in the future is replaced by the server's time, and the response reports
+`timestamps_replaced`. Simplest for the ESPs: leave `timestamp` out.
 
 ### Simulating data
 

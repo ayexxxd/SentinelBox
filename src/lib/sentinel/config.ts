@@ -35,5 +35,3 @@ export const SENSORS: SensorDef[] = [
   { key: "vibration", label: "Vibration", unit: "mm/s", decimals: 2, baselineField: "baseline_vibration" },
 ];
 
-/** |deviation| (%) from the learned baseline at which a reading is shown as elevated / abnormal. */
-export const DEVIATION_BANDS = { elevated: 5, abnormal: 15 };

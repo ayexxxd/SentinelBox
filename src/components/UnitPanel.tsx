@@ -1,18 +1,16 @@
 "use client";
 
 import { type HvacUnit } from "@/data/sentinel";
-import { DEVIATION_BANDS } from "@/lib/sentinel/config";
-import { fmtNum, fmtSigned } from "@/lib/sentinel/format";
+import { RULES } from "@/lib/sentinel/config";
+import { fmtNum } from "@/lib/sentinel/format";
 import { Activity, CircleCheck, Loader, Thermometer, Wrench, X, Zap, type LucideIcon } from "lucide-react";
-import { useUnitLive, type SensorLive } from "./SentinelProvider";
+import { HEALTH_WINDOW, useUnitLive, type SensorLive } from "./SentinelProvider";
 
 const ICONS: Record<string, LucideIcon> = {
   temperature: Thermometer,
   current: Zap,
   vibration: Activity,
 };
-
-const BAR_RANGE = 40; // the deviation bar spans ±40 %
 
 function ago(t: number | null, now: number | null) {
   if (t == null || now == null) return "never";
@@ -21,36 +19,47 @@ function ago(t: number | null, now: number | null) {
   return `${Math.floor(s / 60)}m ${s % 60}s ago`;
 }
 
-function band(dev: number | null) {
-  if (dev == null) return { label: "—", text: "text-slate-400", fill: "#64748b" };
-  const a = Math.abs(dev);
-  if (a >= DEVIATION_BANDS.abnormal) return { label: "Abnormal", text: "text-orange-300", fill: "#fb923c" };
-  if (a >= DEVIATION_BANDS.elevated) return { label: "Elevated", text: "text-amber-200", fill: "#fcd34d" };
-  return { label: "Normal", text: "text-emerald-300", fill: "#34d399" };
+/** Health bar color follows the maintenance rule: below 70 % is maintenance territory. */
+function healthTone(pct: number) {
+  if (pct >= 85) return { fill: "#34d399", text: "text-emerald-300", label: "Good" };
+  if (pct >= RULES.healthThreshold) return { fill: "#fcd34d", text: "text-amber-200", label: "Fair" };
+  return { fill: "#fb923c", text: "text-orange-300", label: "Poor" };
 }
 
-/** Diverging bar: center = learned normal, shaded band = normal range, fill = current deviation. */
-function DeviationBar({ dev }: { dev: number | null }) {
-  const b = band(dev);
-  const clamp = (v: number) => Math.max(-BAR_RANGE, Math.min(BAR_RANGE, v));
-  const pos = (v: number) => 50 + (clamp(v) / BAR_RANGE) * 50;
-  const normalW = (DEVIATION_BANDS.elevated / BAR_RANGE) * 50;
+/** General health of the unit: median of its last 5 health_pct readings, as a 0–100 % bar. */
+function HealthBar({ pct }: { pct: number | null }) {
+  const tone = pct == null ? null : healthTone(pct);
   return (
-    <div className="mt-3">
-      <div className="relative h-2.5 rounded-full bg-white/[0.07]">
-        <div className="absolute inset-y-0 rounded-full bg-emerald-400/15" style={{ left: `${50 - normalW}%`, width: `${normalW * 2}%` }} />
-        {dev != null && (
-          <div
-            className="absolute inset-y-0 rounded-full transition-all duration-500"
-            style={{ left: `${Math.min(50, pos(dev))}%`, width: `${Math.abs(pos(dev) - 50)}%`, background: b.fill }}
-          />
-        )}
-        <div className="absolute -bottom-1 -top-1 left-1/2 w-0.5 -translate-x-1/2 rounded bg-slate-300/80" />
+    <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-300">Health</p>
+          <p className="text-[11px] text-slate-500">
+            {tone ? `${tone.label} · median of last ${HEALTH_WINDOW} readings` : "learning normal behavior…"}
+          </p>
+        </div>
+        <p className={`text-4xl font-bold tabular-nums ${tone ? tone.text : "text-slate-500"}`}>
+          {pct == null ? "—" : fmtNum(pct, 0)}
+          <span className="ml-0.5 text-xl">%</span>
+        </p>
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-        <span>−{BAR_RANGE}%</span>
-        <span>normal</span>
-        <span>+{BAR_RANGE}%</span>
+      <div className="relative mt-3 h-3 rounded-full bg-white/[0.08]">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct ?? 0}%`, background: tone?.fill ?? "transparent" }}
+        />
+        <span
+          className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded bg-slate-300/70"
+          style={{ left: `${RULES.healthThreshold}%` }}
+          title={`Below ${RULES.healthThreshold}% maintenance is required`}
+        />
+      </div>
+      <div className="relative mt-1 h-3 text-[10px] text-slate-500">
+        <span className="absolute left-0">0%</span>
+        <span className="absolute -translate-x-1/2" style={{ left: `${RULES.healthThreshold}%` }}>
+          {RULES.healthThreshold}%
+        </span>
+        <span className="absolute right-0">100%</span>
       </div>
     </div>
   );
@@ -58,7 +67,6 @@ function DeviationBar({ dev }: { dev: number | null }) {
 
 function SensorCard({ s, now }: { s: SensorLive; now: number | null }) {
   const Icon = ICONS[s.sensor.key] ?? Activity;
-  const b = band(s.deviation);
   return (
     <div className={`rounded-2xl border p-5 transition ${s.alive ? "border-white/10 bg-white/[0.04]" : "border-red-400/40 bg-red-500/[0.07]"}`}>
       <div className="flex items-center justify-between gap-3">
@@ -87,19 +95,10 @@ function SensorCard({ s, now }: { s: SensorLive; now: number | null }) {
       </div>
 
       {s.alive ? (
-        <>
-          <div className="mt-4 flex items-end justify-between gap-4">
-            <p className="text-3xl font-bold tabular-nums text-white">
-              {fmtNum(s.value, s.sensor.decimals)}
-              <span className="ml-1 text-base font-normal text-slate-500">{s.sensor.unit}</span>
-            </p>
-            <div className="text-right">
-              <p className={`text-2xl font-bold tabular-nums ${b.text}`}>{fmtSigned(s.deviation)}</p>
-              <p className={`text-[11px] ${b.text}`}>{s.deviation == null ? "no baseline yet" : `${b.label} · vs normal`}</p>
-            </div>
-          </div>
-          <DeviationBar dev={s.deviation} />
-        </>
+        <p className="mt-4 text-3xl font-bold tabular-nums text-white">
+          {fmtNum(s.value, s.sensor.decimals)}
+          <span className="ml-1 text-base font-normal text-slate-500">{s.sensor.unit}</span>
+        </p>
       ) : (
         <p className="mt-4 text-sm text-red-300">Not reporting · last reading {ago(s.lastSeen, now)}</p>
       )}
@@ -107,9 +106,9 @@ function SensorCard({ s, now }: { s: SensorLive; now: number | null }) {
   );
 }
 
-/** In-scene panel for one HVAC unit: maintenance verdict + liveness and deviation of each sensor. */
+/** In-scene panel for one HVAC unit: maintenance verdict, health %, and each sensor's reading. */
 export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: () => void }) {
-  const { status, sensors, lastUpdate } = useUnitLive(unit.label);
+  const { status, sensors, lastUpdate, health } = useUnitLive(unit.label);
   const offline = sensors.filter((s) => !s.alive);
 
   const verdict =
@@ -117,7 +116,7 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
       ? {
           Icon: Wrench,
           title: "Maintenance required",
-          detail: "Readings stayed outside this unit's learned normal behavior in 3 of the last 5 readings.",
+          detail: "This unit's SentinelBox reported it as degraded in its latest reading. Schedule an inspection.",
           cls: "border-orange-400/40 bg-orange-500/10 text-orange-100",
           icon: "bg-orange-400 text-[#1a0d02]",
         }
@@ -125,14 +124,17 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
         ? {
             Icon: CircleCheck,
             title: "No maintenance needed",
-            detail: "The unit is operating within its learned normal behavior.",
+            detail: "This unit's SentinelBox reported it as healthy in its latest reading.",
             cls: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100",
             icon: "bg-emerald-400 text-[#022012]",
           }
         : {
             Icon: Loader,
             title: status === "learning" ? "Learning normal behavior" : "No data from this unit",
-            detail: status === "learning" ? "SentinelBox is collecting baseline samples." : "The SentinelBox device is not reporting.",
+            detail:
+              status === "learning"
+                ? "Readings are arriving, but the SentinelBox hasn't reported a health status yet."
+                : "No readings have been received from this unit's SentinelBox.",
             cls: "border-sky-400/30 bg-sky-500/10 text-sky-100",
             icon: "bg-sky-400 text-[#021624]",
           };
@@ -168,6 +170,8 @@ export default function UnitPanel({ unit, onClose }: { unit: HvacUnit; onClose: 
           )}
         </div>
       </div>
+
+      <HealthBar pct={health} />
 
       <h3 className="mt-7 text-sm font-semibold text-slate-300">
         Sensors <span className="text-slate-500">· {sensors.length - offline.length}/{sensors.length} alive</span>

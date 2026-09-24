@@ -1,0 +1,260 @@
+SENTINEL INSIGHT — COMMAND TUTORIAL FOR ALEX
+============================================
+
+Everything below is typed in the Terminal, inside the project folder.
+Open Terminal and go there first:
+
+    cd ~/Documents/Carrier/SentinelBox
+
+
+------------------------------------------------------------
+1. FIRST TIME SETUP (or after pulling your friend's changes)
+------------------------------------------------------------
+
+Install the project's packages:
+
+    npm install
+
+Make sure the dashboard reads from the database. The file .env.local must
+contain this line (create it if it's missing):
+
+    echo "NEXT_PUBLIC_SENTINEL_API_URL=/api" > .env.local
+
+If you remove that line, the dashboard runs on fake data inside the browser
+instead of the database.
+
+
+------------------------------------------------------------
+2. RUN THE APP
+------------------------------------------------------------
+
+Start the dashboard + API + database (leave this terminal open):
+
+    npm run dev
+
+Then open in the browser:  http://localhost:3000
+Stop it with:  Ctrl + C
+
+The first load takes ~10–15 s (dev mode compiles the 3D scene). For a faster
+version (e.g. for the demo), build once and run the production server:
+
+    npm run build
+    npm run start
+
+
+------------------------------------------------------------
+3. SIMULATED DATA  (the app must be running — use a 2nd terminal tab)
+------------------------------------------------------------
+
+Wipe the database and fill it with 25 minutes of fake history:
+
+    npm run sim:seed
+
+Same, but with 60 minutes of history:
+
+    npm run sim:seed 60
+
+Start writing new fake readings every 2 seconds (the dashboard goes live):
+
+    npm run sim:start
+
+Stop the fake readings (DO THIS before real ESP devices send data, or the
+fake and real readings mix under the same names HVAC-01 / HVAC-02):
+
+    npm run sim:stop
+
+Is the simulator running? How many rows are in the database?
+
+    npm run sim:status
+
+Note: restarting the app stops the simulator. Run  npm run sim:start  again.
+
+
+------------------------------------------------------------
+4. THE DATABASE
+------------------------------------------------------------
+
+The database is ONE file:
+
+    data/sentinel.db        (SQLite; created automatically)
+
+Table "readings" has these columns:
+    id           row number (automatic)
+    unit_id      which unit, e.g. HVAC-01
+    timestamp    date/time
+    temperature  °C   (empty = sensor offline)
+    current      A
+    vibration    mm/s
+    status       healthy | degraded   (empty while the unit is learning)
+    health_pct   health condition, 0–100 %
+
+Table "units" has device info (chip, RAM, Flash) and last_seen.
+
+See the latest 10 readings:
+
+    sqlite3 -header -column data/sentinel.db "select * from readings order by id desc limit 10;"
+
+Count rows per unit:
+
+    sqlite3 -header -column data/sentinel.db "select unit_id, count(*) from readings group by unit_id;"
+
+Open an interactive SQL shell (type  .quit  to leave):
+
+    sqlite3 data/sentinel.db
+
+Delete ALL readings and units (app must be running):
+
+    curl -X DELETE http://localhost:3000/api/readings
+
+After deleting, refresh the browser page — the page remembers what it already
+loaded until you refresh.
+
+Download the data as a CSV file (open it in Excel / Numbers):
+
+    curl -o readings.csv http://localhost:3000/api/readings/export
+
+    (or open http://localhost:3000/api/readings/export in the browser;
+     add ?unit_id=HVAC-02 for one unit)
+
+Automatic cleanup: readings older than 7 days are deleted by themselves.
+Change it in .env.local (0 = never delete), then restart the app:
+
+    SENTINEL_RETENTION_DAYS=30
+
+In JetBrains (DataGrip / WebStorm / IntelliJ Ultimate):
+    View → Tool Windows → Database → + → Data Source → SQLite
+    File: ~/Documents/Carrier/SentinelBox/data/sentinel.db
+    Right-click the connection → Refresh to see new rows.
+
+Or in the browser while the app runs:
+    http://localhost:3000/api/readings?limit=20
+    http://localhost:3000/api/units
+    http://localhost:3000/api/simulate
+
+
+------------------------------------------------------------
+5. THE API (what the ESP devices / your friend use)
+------------------------------------------------------------
+
+Base URL on your Mac:       http://localhost:3000/api
+Base URL for your friend:   http://<your-mac-ip>:3000/api
+(same Wi-Fi, and  npm run dev  must be running on your Mac)
+
+Get your Mac's IP address:
+
+    ipconfig getifaddr en0
+
+Endpoints:
+    POST   /api/readings    send one reading (object) or many (array, max 500)
+    GET    /api/readings    read readings  (?since=...&unit_id=HVAC-01&limit=100)
+    GET    /api/readings/export   download readings as CSV
+    DELETE /api/readings    delete everything
+    POST   /api/units       send device info (chip, RAM, Flash)
+    GET    /api/units       list units
+    GET    /api/simulate    simulator status
+    POST   /api/simulate    {"action":"seed"|"start"|"stop"}
+
+Send a test reading exactly like an ESP would:
+
+    curl -X POST http://localhost:3000/api/readings -H 'content-type: application/json' -d '{"unit_id":"HVAC-01","temperature":24.5,"current":0.32,"vibration":1.1,"status":"healthy","health_pct":95}'
+
+Rules for a reading:
+    - only unit_id is required
+    - send null for a disconnected sensor (shows as "Offline")
+    - status is "healthy" or "degraded"
+    - health_pct must be 0–100
+    - timestamp is optional (the server stamps it if missing — recommended);
+      a wrong device clock (1970 or in the future) is replaced by server time
+    - unit_id must be HVAC-01 or HVAC-02 to appear in the 3D view
+
+Optional password for writes: add this line to .env.local, restart the app,
+and every POST/DELETE must then send the header  x-api-key: some-secret
+
+    SENTINEL_INGEST_KEY=some-secret
+
+
+------------------------------------------------------------
+6. READING THE DASHBOARD
+------------------------------------------------------------
+
+    Street / Aerial / HVAC buttons   camera views (drag to rotate, scroll to zoom)
+    Pill dot green                    unit is healthy
+    Pill dot orange                   unit is degraded → maintenance required
+    Pill dot blue                     learning (readings arrive, no status yet)
+    Pill dot grey                     no data from that unit
+    "91%" on a pill                   unit health (median of its last 5 readings)
+    Red "0/3" on a pill               how many of its 3 sensors are alive
+    "Live" badge (top right)          reading from the database
+    "Simulated data" badge            .env.local is missing → fake browser data
+
+Click an HVAC (or its pill) to open its panel:
+    - maintenance verdict (healthy / degraded)
+    - Health bar = median of the last 5 health_pct readings (ignores glitches)
+    - each sensor: Alive/Offline and its current value
+A sensor is "Alive" if it sent a value in the last 10 seconds.
+
+
+------------------------------------------------------------
+7. CHECK THE CODE
+------------------------------------------------------------
+
+Type-check:
+
+    npx tsc --noEmit
+
+Lint (2 known harmless errors in BuildingScene.tsx):
+
+    npm run lint
+
+
+------------------------------------------------------------
+8. GIT (share with your friend)
+------------------------------------------------------------
+
+What changed:
+
+    git status
+
+Get your friend's latest work:
+
+    git pull
+
+Save and upload your work (write your own message):
+
+    git add -A
+    git commit -m "your message"
+    git push
+
+The database file (data/) and .env.local are NOT uploaded — each person has
+their own.
+
+
+------------------------------------------------------------
+9. TROUBLESHOOTING
+------------------------------------------------------------
+
+"Port 3000 is in use"
+    Another copy is running. Stop it with Ctrl + C in its terminal, or use
+    the address it switched to (e.g. http://localhost:3001).
+
+Badge says "Simulated data" instead of "Live"
+    .env.local is missing. Run the echo command from section 1, restart.
+
+All sensors show "Offline"
+    Nothing new is arriving. Run  npm run sim:start  or check the ESPs.
+
+Friend can't connect
+    Same Wi-Fi? App running? Correct IP (ipconfig getifaddr en0)?
+    School/office Wi-Fi often blocks device-to-device connections.
+
+Start the database from zero
+    Stop the app, delete the  data  folder, start the app again.
+    Or just run:  npm run sim:seed
+
+Where things live in the code
+    3D building          src/components/three/CetecBuilding.tsx
+    Scene / cameras      src/components/three/BuildingScene.tsx
+    Unit panel           src/components/UnitPanel.tsx
+    Database             src/lib/sentinel/db.ts  and  store.ts
+    API endpoints        src/app/api/
+    Simulator            src/lib/sentinel/mock.ts

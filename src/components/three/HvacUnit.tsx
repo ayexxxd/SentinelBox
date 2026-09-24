@@ -222,7 +222,7 @@ export default function HvacUnit3D({
       </mesh>
       <mesh ref={beaconRef} position={[-W / 2 + 0.3, TOP_Y + 1.3, -D / 2 + 0.3]}>
         <sphereGeometry args={[0.18, 16, 16]} />
-        <meshStandardMaterial color={meta.hex} emissive={meta.hex} emissiveIntensity={2.5} />
+        <meshStandardMaterial color={meta.hex} emissive={meta.hex} emissiveIntensity={0.9} toneMapped={false} />
       </mesh>
       <pointLight position={[-W / 2 + 0.3, TOP_Y + 1.3, -D / 2 + 0.3]} color={meta.hex} intensity={3} distance={7} />
     </group>

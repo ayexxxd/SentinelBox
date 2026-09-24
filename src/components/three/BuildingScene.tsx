@@ -1,7 +1,8 @@
 "use client";
 
 import "@/lib/three-warnings";
-import { sensorLiveness, toUiStatus, useSentinel } from "@/components/SentinelProvider";
+import { healthMedian, sensorLiveness, toUiStatus, useSentinel } from "@/components/SentinelProvider";
+import { fmtNum } from "@/lib/sentinel/format";
 import { HVAC_UNITS, STATUS_META } from "@/data/sentinel";
 import { OrbitControls, Sky } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -113,7 +114,10 @@ export default function BuildingScene({
     HVAC_UNITS.map((u) => {
       const rs = byUnit.get(u.label) ?? [];
       const sensors = sensorLiveness(rs, lastUpdate ?? 0);
-      return [u.id, { status: toUiStatus(rs.at(-1)), alive: sensors.filter((s) => s.alive).length, total: sensors.length }];
+      return [
+        u.id,
+        { status: toUiStatus(rs.at(-1)), health: healthMedian(rs), alive: sensors.filter((s) => s.alive).length, total: sensors.length },
+      ];
     })
   );
 
@@ -177,7 +181,7 @@ export default function BuildingScene({
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {HVAC_UNITS.map((u) => {
           const meta = STATUS_META[live[u.id].status];
-          const { alive, total } = live[u.id];
+          const { alive, total, health } = live[u.id];
           const active = hovered === u.id || selected === u.id;
           return (
             <div
@@ -202,6 +206,11 @@ export default function BuildingScene({
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.hex }} />
                 </span>
                 <span className="text-xs font-bold tracking-wide text-white">{u.label}</span>
+                {health != null && (
+                  <span className="text-xs font-semibold tabular-nums" style={{ color: meta.hex }}>
+                    {fmtNum(health, 0)}%
+                  </span>
+                )}
                 {alive < total && <span className="text-[10px] font-semibold text-red-300">{alive}/{total}</span>}
               </button>
             </div>
