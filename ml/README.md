@@ -8,7 +8,7 @@ the weighted-score rule from the main README.
 pip install -r requirements.txt
 python download_data.py   # UCI fan accelerometer (3.6 MB); LBNL only with --lbnl (530 MB)
 python build_dataset.py   # -> data/processed/{train,test}.npz
-python train.py           # trains, evaluates, writes ../firmware/SentinelBoxANN/sentinel_model.h
+python train.py           # trains (+ data/real if present), evaluates, writes ../firmware/SentinelBoxANN/sentinel_model.h
 ```
 
 `train.py` also compiles `firmware/SentinelBoxANN/sentinel_ann.h` with gcc and checks that
@@ -81,3 +81,88 @@ Copy `secrets.example.h` to `secrets.h` (git-ignored) and fill in WiFi and the s
   and the network sees that sensor at its baseline.
 - `temp_score`, `current_score` and `vibration_score` show how much health is lost when
   only that sensor deviates. This tells the technician *why* the alert fired.
+
+## Building the real dataset (prototype)
+
+The public data teaches the network what "moving away from normal" looks like. Recordings
+from our own fans adjust it to our sensors and mounting. Each 2 s window becomes one row.
+
+**What gets recorded.** After the baseline is learned, the firmware prints one `CSV,...`
+line per window on the serial port. The line holds the raw features (vibration RMS, crest,
+kurtosis, current, temperature), the baseline, and what the model predicted.
+`collect_serial.py` saves those lines to `data/real/<session>_<scenario>_L<label>.csv`,
+together with the label you pass it. The dashboard does not store crest or kurtosis, so
+record over serial, not from the API.
+
+### 1. Prepare the hardware
+
+1. Screw or glue the MPU6500 rigidly to the fan housing. Always use the same spot and
+   orientation; tape or a loose mount adds its own vibration.
+2. Put the INA219 in series with the fan supply, and place the MAX6675 thermocouple on the
+   motor or housing. Set `MAX6675_WIRED 1` in the sketch once it is connected.
+3. Set `FAN_RPM` to the fan's real speed (used only for the mm/s shown on the dashboard).
+4. Flash `SentinelBoxANN.ino`, then close the Arduino serial monitor: only one program
+   can hold the port.
+
+### 2. Learn the baseline
+
+5. Let the fan run normally for at least 5 min so the temperature settles.
+6. Send `r` over serial, or start with an empty NVS, and let it learn for 90 s without
+   touching anything.
+   The firmware stops printing `LEARNING` and starts printing `CSV,` lines.
+
+### 3. Record each condition
+
+Run one command per session. Use `--skip` to throw away the transition, so for example
+you are not recording the dryer while it is still heating the fan up. Between faulty
+sessions, go back to normal and wait until health returns to around 100.
+
+```bash
+python collect_serial.py --port /dev/ttyUSB0 --label 0 --scenario normal --seconds 300
+```
+
+| # | Condition | How to produce it | `--label` | Duration |
+|---|---|---|---|---|
+| 1 | Normal | Nothing, fan running | 0 | 5 min |
+| 2 | Tricky normal | Tap the table, walk by, plug in chargers nearby, move the cables | 0 | 3 min |
+| 3 | Mild heat | Hair dryer 40–50 cm away (+3 to 6 °C) | 1 | 2 min, `--skip 30` |
+| 4 | Strong heat | Hair dryer 10–15 cm away (above +6 °C) | 2 | 2 min, `--skip 30` |
+| 5 | Mild imbalance | A small bit of putty or tape (~0.2 g) on one blade | 1 | 3 min |
+| 6 | Strong imbalance | More mass (~1 g) or two pieces on the same side | 2 | 3 min |
+| 7 | Partially blocked airflow | Cardboard over ~30 % of the intake | 1 | 3 min |
+| 8 | Heavily blocked airflow | Cardboard over ~70 % of the intake | 2 | 3 min |
+| 9 | Combination | For example strong imbalance plus mild heat | 2 | 2 min |
+
+Choose the label by the *intended* severity of the perturbation, not by what the model
+says. If a perturbation does not measurably change the signal (for example, current stays
+within ±3 %), label it 0 or leave it out: the network cannot learn something the sensors
+do not see.
+
+### 4. Repeat to cover the variation
+
+7. Record the whole table on **both units** (`UNIT_ID` HVAC-01 and HVAC-02).
+8. Repeat on **at least two different days** or at different room temperatures, with a new
+   baseline each time.
+9. Aim for about 150 windows (5 min) per condition and unit. Every file is one session;
+   more short sessions beat one long session.
+
+### 5. Retrain and flash
+
+```bash
+python train.py
+```
+
+10. `train.py` picks up `data/real/*.csv` on its own and weights each real window 5×
+    (`REAL_WEIGHT`). It holds out ~25 % of the sessions of each class as a test set and
+    prints "Real prototype, held-out sessions", with the per-scenario accuracy and the KPIs.
+11. Check the false alarm rate on held-out normal sessions (rows 1–2) and the detection
+    rate on the perturbations. If a scenario fails, record more sessions of it.
+12. Copy the new `sentinel_model.h` along with the sketch and flash it again. The baseline
+    in NVS is kept.
+
+### 6. Validate live (dashboard KPIs)
+
+13. With the dashboard running, type `n` in the serial monitor while the unit is normal,
+    `p` during each perturbation, and `c` to clear the tag. The readings then carry
+    `real_condition`, and the dashboard KPIs (detection, false alarms, detection time) are
+    measured on the real equipment.

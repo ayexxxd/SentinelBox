@@ -321,6 +321,12 @@ void loop() {
     json += ",\"health_pct\":" + num(healthSmooth, 1);
     json += ",\"sentinel_status\":\"" + String(maintenance ? "MAINTENANCE REQUIRED" : "NORMAL") + "\"";
     json += ",\"processing_ms\":" + num(processingMs, 3) + "}";
+
+    // Features crudas + baseline para armar el dataset real (ml/collect_serial.py).
+    Serial.printf("CSV,%lu,%s,%d,%d,%d,%.6f,%.4f,%.4f,%.5f,%.3f,%.6f,%.4f,%.4f,%.5f,%.3f,%d,%.1f\n", millis(), UNIT_ID,
+                  vibOk, inaOk, MAX6675_WIRED, obs.vib_rms, obs.vib_crest, obs.vib_kurt, obs.current, obs.temp,
+                  baseline.vib_rms, baseline.vib_crest, baseline.vib_kurt, baseline.current, baseline.temp, r.cls,
+                  r.health_pct);
   }
 
   Serial.println(json);

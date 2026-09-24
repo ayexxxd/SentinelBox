@@ -46,5 +46,6 @@
     "max_health_diff": 3.939103304517744e-05,
     "same_class": 1.0,
     "max_vib_stat_rel_diff": 1.8513971173136374e-06
-  }
+  },
+  "real_prototype": null
 }
