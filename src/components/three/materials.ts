@@ -176,6 +176,46 @@ export function boxGeometry(w: number, h: number, d: number) {
   return g;
 }
 
+/** Horizontal ground plane (w × d at y=0) with meter UVs in `muv`, for paving shaders. */
+export function groundPlane(w: number, d: number) {
+  const g = new THREE.PlaneGeometry(w, d);
+  g.rotateX(-Math.PI / 2);
+  const pos = g.attributes.position;
+  const muv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    muv[i * 2] = pos.getX(i) + w / 2;
+    muv[i * 2 + 1] = pos.getZ(i) + d / 2;
+  }
+  g.setAttribute("muv", new THREE.BufferAttribute(muv, 2));
+  return g;
+}
+
+/** Lawn: two greens mottled by world-space noise, with fine blade speckle. */
+export function makeGrassMaterial() {
+  const mat = new THREE.MeshStandardMaterial({ color: "#7aa06a", roughness: 1 });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vWxz;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>\nvarying vec2 vWxz;\n${GLSL_HASH}`)
+      .replace(
+        "#include <color_fragment>",
+        /* glsl */ `#include <color_fragment>
+        {
+          float n = sbNoise(vWxz * 0.045) * 0.6 + sbNoise(vWxz * 0.18) * 0.3 + sbNoise(vWxz * 1.1) * 0.1;
+          // linear-space colors (≈ sRGB #4a7a3a and #7fa35a)
+          vec3 dark = vec3(0.069, 0.195, 0.042);
+          vec3 light = vec3(0.212, 0.366, 0.102);
+          diffuseColor.rgb = mix(dark, light, n);
+          diffuseColor.rgb *= 0.94 + 0.12 * sbHash(floor(vWxz * 6.0));
+        }`
+      );
+  };
+  mat.customProgramCacheKey = () => "sb-grass";
+  return mat;
+}
+
 /** Sky dome for image-based lighting: zenith blue, bright horizon, warm sun, soft clouds. */
 export function makeSkyScene() {
   const scene = new THREE.Scene();

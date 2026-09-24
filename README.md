@@ -93,3 +93,34 @@ processing_ms
 - 3-of-5 persistence logic
 - Data transmission and dashboard visualization
 
+
+## Receiving data (API)
+
+The dashboard app exposes endpoints the SentinelBox devices can push to. Run the app
+(`npm run dev`), then point the ESP units at `http://<computer-ip>:3000/api`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/readings` | Send one reading (JSON object) or a batch (array, max 500). Returns `201 { accepted }`. |
+| `GET` | `/api/readings?since=<ISO or epoch ms>&unit_id=<id>&limit=<n>` | Readings, oldest first. The dashboard polls this. |
+| `DELETE` | `/api/readings` | Clear stored readings and units (demo reset). |
+| `POST` | `/api/units` | Register device info: `{ unit_id, chip?, ram_used_kb?, ram_total_kb?, flash_used_kb?, flash_total_kb? }`. |
+| `GET` | `/api/units` | Units seen so far, with `last_seen`. |
+
+Reading fields follow the data schema above plus `vibration` / `baseline_vibration`. Only
+`unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
+it as offline). `timestamp` defaults to the server time. `sentinel_status` is `NORMAL`,
+`MAINTENANCE REQUIRED` or `LEARNING`.
+
+```bash
+curl -X POST http://localhost:3000/api/readings \
+  -H 'content-type: application/json' \
+  -d '{"unit_id":"HVAC-01","temperature":24.6,"current":0.321,"vibration":1.12,
+       "baseline_temperature":24.5,"baseline_current":0.32,"baseline_vibration":1.1,
+       "health_score":96.2,"sentinel_status":"NORMAL"}'
+```
+
+To show the live data instead of the simulator, copy `.env.example` to `.env.local`, set
+`NEXT_PUBLIC_SENTINEL_API_URL=/api`, and restart `npm run dev`. Set `SENTINEL_INGEST_KEY`
+to require an `x-api-key` header on writes. Readings are kept in memory, so they reset
+when the server restarts.

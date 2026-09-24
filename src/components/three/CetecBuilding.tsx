@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import * as THREE from "three";
-import { boxGeometry, makeConcreteMaterial, makeGlassMaterial, slabGeometry } from "./materials";
+import { boxGeometry, groundPlane, makeConcreteMaterial, makeGlassMaterial, slabGeometry } from "./materials";
 
 /**
  * CETEC, Tec de Monterrey ("El Servilletero", Óscar Bulnes, 1989). Units are meters.
@@ -12,8 +12,8 @@ import { boxGeometry, makeConcreteMaterial, makeGlassMaterial, slabGeometry } fr
  * rhombus), tilted 20° in its own plane, mirrored: the west one rises
  * toward the front, the east one toward the back. Each is planted on its lowest corner
  * (everything below y=0 is clipped by the materials):
- *  - WEST, glass curtain wall on every face.
- *  - EAST, the same slab, also glass on every face.
+ *  - Both slabs: glass curtain wall on the two big faces, white textured cladding on
+ *    the edges (sides, top and bottom).
  * An elevated bridge spans the gap from one inner face to the other, touching nothing
  * but the two slabs; its roof carries the HVAC units.
  *
@@ -52,6 +52,9 @@ function useMaterials() {
   return useMemo(
     () => ({
       smooth: makeConcreteMaterial({ color: "#d6ccbc", panel: [4.5, 1.5], ribs: false }),
+      // white precast cladding on the slab edges: panel grid + fine ribbing
+      cladding: makeConcreteMaterial({ color: "#efece6", panel: [3, 1.5] }),
+      pavers: makeConcreteMaterial({ color: "#c9a99c", panel: [1.2, 1.2], ribs: false }),
       glass: makeGlassMaterial({ color: "#1f5d5a", mullion: [1.6, 3.9] }),
       ribbon: makeGlassMaterial({ color: "#182a33", mullion: [1.8, 10] }),
     }),
@@ -75,20 +78,27 @@ function SlabFrame({ x, lean, children }: { x: number; lean: number; children: R
   );
 }
 
+/** Box groups: 0 +x, 1 -x, 2 +y, 3 -y (edges: cladding), 4 +z, 5 -z (big faces: glass). */
+function useSlabMaterials(m: Mats) {
+  return useMemo(() => [m.cladding, m.cladding, m.cladding, m.cladding, m.glass, m.glass], [m]);
+}
+
 function WestSlab({ m }: { m: Mats }) {
   const geom = useMemo(() => shearedSlab(SLAB.long, SLAB.short, WEST.lean), []);
+  const mats = useSlabMaterials(m);
   return (
     <SlabFrame x={WEST.xInner - THICK / 2} lean={WEST.lean}>
-      <mesh geometry={geom} material={m.glass} castShadow receiveShadow />
+      <mesh geometry={geom} material={mats} castShadow receiveShadow />
     </SlabFrame>
   );
 }
 
 function EastSlab({ m }: { m: Mats }) {
   const geom = useMemo(() => shearedSlab(SLAB.long, SLAB.short, EAST.lean), []);
+  const mats = useSlabMaterials(m);
   return (
     <SlabFrame x={EAST.xInner + THICK / 2} lean={EAST.lean}>
-      <mesh geometry={geom} material={m.glass} castShadow receiveShadow />
+      <mesh geometry={geom} material={mats} castShadow receiveShadow />
     </SlabFrame>
   );
 }
@@ -145,20 +155,16 @@ function Railing({ w, d }: { w: number; d: number }) {
 }
 
 /** Entrance plaza pavers at the open front of the gap. */
-function Plaza() {
-  return (
-    <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[4, 0.03, 14]}>
-      <planeGeometry args={[34, 26]} />
-      <meshStandardMaterial color="#c7a79b" roughness={0.95} />
-    </mesh>
-  );
+function Plaza({ m }: { m: Mats }) {
+  const geom = useMemo(() => groundPlane(34, 26), []);
+  return <mesh geometry={geom} material={m.pavers} receiveShadow position={[4, 0.03, 14]} />;
 }
 
 export default function CetecBuilding() {
   const m = useMaterials();
   return (
     <group>
-      <Plaza />
+      <Plaza m={m} />
       <WestSlab m={m} />
       <EastSlab m={m} />
       <Bridge m={m} />

@@ -17,7 +17,7 @@ import { makeSkyScene } from "./materials";
 /* Camera views, matched to the reference photos (street view, drone view) plus the terrace. */
 const PRESETS = {
   street: { label: "Street", Icon: Building2, pos: [-75, 6, 150], tgt: [2, 20, -4] },
-  aerial: { label: "Aerial", Icon: Plane, pos: [110, 100, 100], tgt: [4, 14, -6] },
+  aerial: { label: "Aerial", Icon: Plane, pos: [4, 230, -6], tgt: [4, 0, -8] },
   terrace: { label: "HVAC", Icon: Snowflake, pos: [4, 46, 52], tgt: [4, 18, 2] },
 } as const;
 type ViewKey = keyof typeof PRESETS;
