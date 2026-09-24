@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sim:seed": "node -e \"fetch(process.env.SENTINEL_URL||'http://localhost:3000/api/simulate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'seed',minutes:Number(process.argv[1]||25),reset:true})}).then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\" --",
+    "sim:start": "node -e \"fetch(process.env.SENTINEL_URL||'http://localhost:3000/api/simulate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'start'})}).then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\"",
+    "sim:stop": "node -e \"fetch(process.env.SENTINEL_URL||'http://localhost:3000/api/simulate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'stop'})}).then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\"",
+    "sim:status": "node -e \"fetch(process.env.SENTINEL_URL||'http://localhost:3000/api/simulate').then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\""
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
@@ -23,7 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.13.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

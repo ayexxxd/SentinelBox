@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
 
 /**
@@ -72,7 +72,9 @@ function drawFlag(id: FlagId): HTMLCanvasElement {
   return c;
 }
 
-function useFlagMaterial(id: FlagId, time: { value: number }, phase: number) {
+type TimeRef = RefObject<{ value: number }>;
+
+function useFlagMaterial(id: FlagId, time: TimeRef, phase: number) {
   return useMemo(() => {
     if (typeof document === "undefined") return new THREE.MeshStandardMaterial();
     const tex = new THREE.CanvasTexture(drawFlag(id));
@@ -80,7 +82,7 @@ function useFlagMaterial(id: FlagId, time: { value: number }, phase: number) {
     tex.anisotropy = 8;
     const mat = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.85 });
     mat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = time;
+      shader.uniforms.uTime = time.current;
       shader.vertexShader = shader.vertexShader
         .replace("#include <common>", "#include <common>\nuniform float uTime;")
         .replace(
@@ -96,7 +98,7 @@ function useFlagMaterial(id: FlagId, time: { value: number }, phase: number) {
   }, [id, time, phase]);
 }
 
-function Flag({ id, x, phase, time }: { id: FlagId; x: number; phase: number; time: { value: number } }) {
+function Flag({ id, x, phase, time }: { id: FlagId; x: number; phase: number; time: TimeRef }) {
   const mat = useFlagMaterial(id, time, phase);
   const size = { w: 2.6, h: 1.6 };
   return (
@@ -118,15 +120,16 @@ function Flag({ id, x, phase, time }: { id: FlagId; x: number; phase: number; ti
 
 /** Mexico, USA and Estonia flags at the entrance plaza. */
 export default function Flags({ position }: { position: [number, number, number] }) {
-  const time = useMemo(() => ({ value: 0 }), []);
+  // shader uniform shared by all flags; a ref so it can be advanced every frame
+  const timeRef = useRef({ value: 0 });
   useFrame((_, dt) => {
-    time.value += dt;
+    timeRef.current.value += dt;
   });
   return (
     <group position={position}>
-      <Flag id="mexico" x={-4} phase={0} time={time} />
-      <Flag id="usa" x={0} phase={1.3} time={time} />
-      <Flag id="estonia" x={4} phase={2.6} time={time} />
+      <Flag id="mexico" x={-4} phase={0} time={timeRef} />
+      <Flag id="usa" x={0} phase={1.3} time={timeRef} />
+      <Flag id="estonia" x={4} phase={2.6} time={timeRef} />
     </group>
   );
 }

@@ -93,7 +93,7 @@ export function useSentinel() {
 export function toUiStatus(r: Reading | undefined): HvacStatus {
   if (!r) return "offline";
   if (r.sentinel_status === STATUS.MAINTENANCE) return "maintenance";
-  if (r.sentinel_status === STATUS.LEARNING || r.health_score == null) return "learning";
+  if (r.sentinel_status === STATUS.LEARNING || r.health_pct == null) return "learning";
   return "healthy";
 }
 

@@ -6,15 +6,15 @@ SentinelBox is a Carrier hackathon prototype for intelligent HVAC maintenance us
 
 - Temperature
 - Current
-- Pressure
+- Vibration
 
 The two fans intentionally operate with different normal current profiles. Each sensor is evaluated independently, so changes in one signal are not assumed to cause changes in another.
 
 ## Scoring model
 
 ```text
-AnomalyScore = 0.40 * CurrentScore + 0.35 * TemperatureScore + 0.25 * PressureScore
-HealthScore = 100 - AnomalyScore
+AnomalyScore = 0.40 * CurrentScore + 0.35 * TemperatureScore + 0.25 * VibrationScore
+Health (%)   = 100 - AnomalyScore
 ```
 
 Initial decision logic:
@@ -36,7 +36,7 @@ The dashboard will show:
 - Health Score
 - Current value vs. baseline
 - Temperature value vs. baseline
-- Pressure value vs. baseline
+- Vibration value vs. baseline
 - Deviation percentage
 - Status
 - Historical trends
@@ -48,7 +48,7 @@ Known test states:
 - Normal operation
 - Controlled perturbation
 
-Temperature perturbations can be introduced with a hair dryer, while pressure or airflow changes can be introduced independently. All signals must be measured independently.
+Temperature perturbations can be introduced with a hair dryer, while vibration changes (e.g. an unbalanced fan) can be introduced independently. All signals must be measured independently.
 
 ## KPIs
 
@@ -70,14 +70,15 @@ timestamp,
 unit_id,
 temperature,
 current,
-pressure,
+vibration,
 baseline_temperature,
 baseline_current,
-baseline_pressure,
+baseline_vibration,
 temp_score,
 current_score,
-pressure_score,
-health_score,
+vibration_score,
+health_pct,          -- health in %, 0–100
+status,              -- "healthy" | "degraded" (null while learning)
 sentinel_status,
 real_condition,
 processing_ms
@@ -106,21 +107,43 @@ The dashboard app exposes endpoints the SentinelBox devices can push to. Run the
 | `DELETE` | `/api/readings` | Clear stored readings and units (demo reset). |
 | `POST` | `/api/units` | Register device info: `{ unit_id, chip?, ram_used_kb?, ram_total_kb?, flash_used_kb?, flash_total_kb? }`. |
 | `GET` | `/api/units` | Units seen so far, with `last_seen`. |
+| `GET` | `/api/simulate` | Simulator status and database totals. |
+| `POST` | `/api/simulate` | `{ "action": "seed", "minutes": 25 }` backfills history (clears first unless `"reset": false`); `{ "action": "start" }` / `{ "action": "stop" }` streams simulated readings every 2 s. |
 
-Reading fields follow the data schema above plus `vibration` / `baseline_vibration`. Only
+Reading fields follow the data schema above. Only
 `unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
 it as offline). `timestamp` defaults to the server time. `sentinel_status` is `NORMAL`,
-`MAINTENANCE REQUIRED` or `LEARNING`.
+`MAINTENANCE REQUIRED` or `LEARNING`; `status` (`healthy`/`degraded`) is derived from it
+when not sent. `health_score` is accepted as an alias of `health_pct`.
 
 ```bash
 curl -X POST http://localhost:3000/api/readings \
   -H 'content-type: application/json' \
   -d '{"unit_id":"HVAC-01","temperature":24.6,"current":0.321,"vibration":1.12,
        "baseline_temperature":24.5,"baseline_current":0.32,"baseline_vibration":1.1,
-       "health_score":96.2,"sentinel_status":"NORMAL"}'
+       "health_pct":96.2,"sentinel_status":"NORMAL"}'
 ```
 
-To show the live data instead of the simulator, copy `.env.example` to `.env.local`, set
-`NEXT_PUBLIC_SENTINEL_API_URL=/api`, and restart `npm run dev`. Set `SENTINEL_INGEST_KEY`
-to require an `x-api-key` header on writes. Readings are kept in memory, so they reset
-when the server restarts.
+### Database
+
+Readings and units are stored in SQLite at `data/sentinel.db` (created automatically,
+git-ignored; override with `SENTINEL_DB_PATH`). It uses Node's built-in `node:sqlite`,
+so there is nothing native to install (Node 22.13+).
+
+The dashboard reads from the API when `.env.local` contains
+`NEXT_PUBLIC_SENTINEL_API_URL=/api`; remove it to fall back to the in-browser simulator.
+Set `SENTINEL_INGEST_KEY` to require an `x-api-key` header on writes.
+
+### Simulating data
+
+With `npm run dev` running:
+
+```bash
+npm run sim:seed      # clear the DB and backfill 25 min of both units (npm run sim:seed 60 for an hour)
+npm run sim:start     # stream new simulated readings every 2 s
+npm run sim:status    # simulator state + row counts
+npm run sim:stop      # stop — do this once real devices are posting
+```
+
+The simulator stops when the server restarts; run `npm run sim:start` again (it continues
+from the last seed, or starts a fresh learning phase).

@@ -23,3 +23,6 @@ node_modules/
 # Logs
 *.log
 
+
+# SQLite database (created by the app)
+data/
