@@ -135,6 +135,6 @@ All engineering docs live in `docs/`:
 
 ## Team
 
-Eduardo Pérez · Pedro Uribe · Alejandro Chio · Emiliano Méndez · Miguel Ángel Rodríguez — 🥇 1st place, Keep It Cool Hackathon (Carrier, 2026).
+Eduardo Pérez · Pedro Uribe · Alejandro Chio · Emiliano Méndez · Miguelangelngel Rodríguez — 🥇 1st place, Keep It Cool Hackathon (Carrier, 2026).
 
 Repository: https://github.com/ayexxxd/SentinelBox
