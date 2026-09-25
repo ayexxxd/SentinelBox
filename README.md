@@ -1,156 +1,146 @@
 # SentinelBox
 
-SentinelBox is a Carrier hackathon prototype for intelligent HVAC maintenance using Edge AI. Two ESP-based units simulate HVAC equipment with different normal operating behaviors, allowing the system to learn an independent baseline for each unit instead of relying on universal thresholds.
+**Predictive maintenance at the edge for HVAC systems — Carrier Hackathon 2026.**
 
-## Signals
+Every HVAC already measures current and temperature to *operate*. Nobody uses that data to *prevent* failures. SentinelBox taps into the signals every HVAC already has, complements them with new sensors integrated in the box (vibration), and learns each unit's normal behavior — so maintenance happens before performance drops, not after.
 
-- Temperature
-- Current
-- Vibration
+![SentinelBox device on a rooftop unit](docs/images/device-rooftop.png)
+*Placeholder: photo of the SentinelBox unit installed next to a rooftop HVAC.*
 
-The two fans intentionally operate with different normal current profiles. Each sensor is evaluated independently, so changes in one signal are not assumed to cause changes in another.
+## The problem
 
-## Scoring model
+Most HVAC failures are detected when performance has already degraded. There is a window of opportunity — the first early signals — that goes unnoticed today. And a single fixed threshold for every unit makes it worse: false alarms trigger unnecessary visits, missed detections end in breakdowns.
 
-```text
-AnomalyScore = 0.40 * CurrentScore + 0.35 * TemperatureScore + 0.25 * VibrationScore
-Health (%)   = 100 - AnomalyScore
-```
+![Equipment health curve showing the window of opportunity](docs/images/problem-curve.svg)
+*Placeholder: health-over-time curve — first signals → window of opportunity → detected failure.*
 
-Initial decision logic:
+## The solution
 
-- `HealthScore >= 70`: `NORMAL`
-- `HealthScore < 70`: `MAINTENANCE REQUIRED`
-- Any individual sensor anomaly score above `80` also requests maintenance.
-- A condition must occur in at least 3 of the last 5 readings to reduce false alarms.
+SentinelBox learns each unit's normal instead of applying one threshold to all of them. Two demo fans intentionally run different normal current profiles; the system still recognizes each one's normal independently.
 
-## Physical indicators
+![Dashboard showing both units with independent baselines](docs/images/dashboard-overview.png)
+*Placeholder: dashboard screenshot — HVAC-01 and HVAC-02 with their own baselines.*
 
-- Green LED: `NORMAL`
-- Orange LED: `MAINTENANCE REQUIRED`
+- **Edge processing on ESP32, no cloud required.** The decision runs on the gateway.
+- **One baseline per unit** (current, temperature, vibration), learned in ~90 s.
+- **Two states:** ● NORMAL ● MAINTENANCE REQUIRED (+ WARNING while degrading, LEARNING while baselining).
 
-## Dashboard
+## Edge AI: a neural network running on the ESP32
 
-The dashboard will show:
+The gateway doesn't apply fixed thresholds — it runs a neural network, on-device, every 2 seconds. No cloud, no round-trips, no connectivity required.
 
-- Health Score
-- Current value vs. baseline
-- Temperature value vs. baseline
-- Vibration value vs. baseline
-- Deviation percentage
-- Status
-- Historical trends
+**1. Sense.** Each 2 s window: 100 vibration samples @ 50 Hz from the MPU6500 (±4g, per-axis means removed) → RMS, crest factor, kurtosis. Mean current (INA219) and temperature (MAX6675) arrive from the HVAC node over UART.
 
-## Validation
+**2. Compare against a learned baseline, not programmed constants.** The first 45 windows (~90 s) of normal operation become *that unit's* baseline, persisted in NVS flash so it survives reboots (`r` over serial relearns it). Every network input is expressed *relative* to baseline — so one trained network works across fan sizes, speeds, and mountings:
 
-Known test states:
-
-- Normal operation
-- Controlled perturbation
-
-Temperature perturbations can be introduced with a hair dryer, while vibration changes (e.g. an unbalanced fan) can be introduced independently. All signals must be measured independently.
-
-## KPIs
-
-1. Maintenance Detection Rate: `TP / (TP + FN)`
-2. False Alarm Rate: `FP / (FP + TN)`
-3. Missed Anomaly Rate: `FN / (FN + TP)`
-4. Average Detection Time
-5. Baseline Learning Time
-6. Normal Recognition by Equipment
-7. Edge Performance: processing time, RAM, and Flash
-8. Health Score
-
-## Data schema
-
-Each reading stores:
-
-```text
-id,            -- assigned by the database
-unit_id,       -- e.g. HVAC-01
-timestamp,     -- date/time, ISO 8601 UTC
-temperature,   -- °C   (null = sensor offline)
-current,       -- A
-vibration,     -- mm/s
-status,        -- "healthy" | "warning" | "degraded" (null while learning)
-health_pct,    -- health condition, 0–100 %
-temp_score,    -- why: health (0–100) each sensor is costing,
-current_score, --   from the SentinelBox neural network
-vibration_score
-```
-
-Each unit's baseline (normal temperature/current/vibration) is the average of its first
-45 readings; the API adds it to every reading it returns, so the dashboard can show the
-deviation from normal.
-
-## Planned implementation
-
-- Sensor acquisition on two ESP devices
-- Per-unit baseline learning
-- Per-sensor anomaly scoring
-- Weighted Health Score calculation
-- Green/orange LED control
-- 3-of-5 persistence logic
-- Data transmission and dashboard visualization
-
-
-## Receiving data (API)
-
-The dashboard app exposes endpoints the SentinelBox devices can push to. Run the app
-(`npm run dev`), then point the ESP units at `http://<computer-ip>:3000/api`.
-
-| Method | Path | Purpose |
+| # | Network input | Formula |
 |---|---|---|
-| `POST` | `/api/readings` | Send one reading (JSON object) or a batch (array, max 500). Returns `201 { accepted }`. |
-| `GET` | `/api/readings?since=<ISO or epoch ms>&unit_id=<id>&limit=<n>` | Readings, oldest first. The dashboard polls this. |
-| `DELETE` | `/api/readings` | Clear stored readings and units (demo reset). |
-| `GET` | `/api/readings/export?unit_id=<id>` | Download readings as CSV (all units if `unit_id` is left out). |
-| `POST` | `/api/units` | Register device info: `{ unit_id, chip?, ram_used_kb?, ram_total_kb?, flash_used_kb?, flash_total_kb? }`. |
-| `GET` | `/api/units` | Units seen so far, with `last_seen`. |
-| `GET` | `/api/simulate` | Simulator status and database totals. |
-| `POST` | `/api/simulate` | `{ "action": "seed", "minutes": 25 }` backfills history (clears first unless `"reset": false`); `{ "action": "start" }` / `{ "action": "stop" }` streams simulated readings every 2 s. |
+| 1 | `vib_rms` | log₂(RMS / baseline) |
+| 2 | `vib_crest` | log₂(crest / baseline), faded out near the noise floor |
+| 3 | `vib_kurt` | log₂(kurtosis / baseline), faded out near the noise floor |
+| 4 | `current` | log₂(I / baseline) |
+| 5 | `temp` | (T − baseline) / 5 °C |
 
-Reading fields follow the data schema above. Only
-`unit_id` is required; send `null` for a sensor that is disconnected (the dashboard shows
-it as offline). `timestamp` defaults to the server time. `status` is `healthy`, `warning` or `degraded` (if left out it
-is derived from `sentinel_status`: NORMAL/WARNING/MAINTENANCE REQUIRED). `health_score` is accepted
-as an alias of `health_pct`. `temp_score`, `current_score` and `vibration_score` (0–100) are shown in
-the unit panel as the cause of an alert. Other fields are ignored.
+**3. Infer on-chip.** MLP **5→16→8→3** (ReLU, softmax T=3.0): **259 float32 parameters ≈ 1 KB**, written in plain C (`SentinelBox/sentinel_ann.h`, weights in generated `SentinelBox/sentinel_model.h`). No TensorFlow Lite, no heap allocator — deterministic inference in microseconds on the ESP32. Outputs NORMAL / WARNING / MAINTENANCE, converted to health % rescaled so the unit's own baseline reads exactly 100.
 
-```bash
-curl -X POST http://localhost:3000/api/readings \
-  -H 'content-type: application/json' \
-  -d '{"unit_id":"HVAC-01","temperature":24.6,"current":0.321,"vibration":1.12,
-       "baseline_temperature":24.5,"baseline_current":0.32,"baseline_vibration":1.1,
-       "health_pct":96.2,"sentinel_status":"NORMAL"}'
+**4. Explain + persist.** An attribution pass re-runs the net with the other sensors held at baseline, so the dashboard can say *why* ("Cause: vibration, +0.18 mm/s vs normal (+16%)"). Health is EMA-smoothed (α=0.35) and the status flips only when the abnormal class persists **3 of the last 5 readings** — one isolated peak changes nothing.
+
+![Health score bar and per-sensor cause breakdown](docs/images/health-why.png)
+*Placeholder: unit panel — health bar with the "Why" per-sensor cause breakdown.*
+
+![Edge AI pipeline: sense → baseline → neural network → decision](docs/images/edge-pipeline.svg)
+*Placeholder: pipeline diagram — 100-sample window → features vs baseline → MLP → health + cause.*
+
+**Measured model performance** (`ml/artifacts/metrics.json`, held-out test set):
+
+| | Detection rate | False alarm rate | Missed anomaly rate |
+|---|---|---|---|
+| Neural network | **1.000** | 0.003 | **0.000** |
+| Weighted-score rule (baseline) | 0.965 | 0.0003 | 0.035 |
+
+Overall test accuracy **0.9936**; C/Python inference parity verified with gcc (max probability diff ~1e-6). Retrainable on your own recordings — see [`docs/setup.md`](docs/setup.md) and `ml/README.md`.
+
+**Why edge instead of cloud:** works with zero connectivity (the demo runs on a phone hotspot with no data plan); milliseconds from sense to decision; no bandwidth or cloud bills per unit; raw vibration never leaves the site; behavior is deterministic and testable on the bench.
+
+## Validation results
+
+Measured on the prototype (normal operation vs. controlled perturbations: hair dryer for temperature, airflow/rotor interference for current and vibration):
+
+| Metric | Result |
+|---|---|
+| Average detection time | **6 s** |
+| Baseline learning time | **90 s** |
+| False alarm rate | **0 %** |
+| Detection performance — current / temperature / vibration | **6 / 3 / 57** |
+
+![3D digital twin of the monitored building](docs/images/3d-twin.png)
+*Placeholder: 3D dashboard view with clickable rooftop units.*
+
+## System architecture
+
+```
+┌──────────┐  UART JSON   ┌─────────────┐  WiFi (iPhone hotspot)   ┌──────────────┐
+│ HVAC-01  │ ────────────▶│             │ ────────────────────────▶│              │
+│ INA219 + │  temp+curr   │ SentinelBox │  POST /api/readings      │  Next.js app │
+│ MAX6675  │              │ ESP32+MPU   │  (+ vibration measured   │  SQLite +    │
+├──────────┤  (plug &     │ gateway     │   on the gateway)        │  3D dashboard│
+│ HVAC-02  │   play, one  │             │                          │              │
+│ INA219 + │   at a time) │             │                          │              │
+│ MAX6675  │              │             │                          │              │
+└──────────┘              └─────────────┘                          └──────────────┘
 ```
 
-### Database
+- **HVAC nodes** (`HVAC01/`, `HVAC02/`) — sensor boards on each fan. They only send what they measure (`unit_id`, `temperature`, `current`) plus a `HELLO` with their ID on boot. No WiFi, no decisions.
+- **SentinelBox gateway** (`SentinelBox/`) — one UART port, WiFi, and its own vibration sensor. It completes the 6-field reading, runs the neural network, and POSTs to the server. Swap HVACs live and it detects the new unit by itself (retrofit plug-and-play demo).
+- **Web app** (`src/`) — Next.js dashboard: 3D building twin with clickable units, live charts, alert cause breakdown, and a REST API with SQLite storage. Works fully offline on a local network.
 
-Readings and units are stored in SQLite at `data/sentinel.db` (created automatically,
-git-ignored; override with `SENTINEL_DB_PATH`). It uses Node's built-in `node:sqlite`,
-so there is nothing native to install (Node 22.13+).
+## Business model
 
-The dashboard reads from the API when `.env.local` contains
-`NEXT_PUBLIC_SENTINEL_API_URL=/api`; remove it to fall back to the in-browser simulator.
-Set `SENTINEL_INGEST_KEY` to require an `x-api-key` header on writes.
-Readings older than `SENTINEL_RETENTION_DAYS` (default 7; `0` keeps everything) are deleted
-automatically. Export them first with `/api/readings/export` if you need them.
+A service inside the policy the customer already pays. Installed by Carrier technicians during an already-scheduled visit — no extra trip.
 
-Timestamps: a device timestamp before 2024 (an ESP clock that never synced) or more than a
-minute in the future is replaced by the server's time, and the response reports
-`timestamps_replaced`. Simplest for the ESPs: leave `timestamp` out.
+| | |
+|---|---|
+| Upfront (device + install, once) | **$3,000 MXN** |
+| Monthly (dashboard, alerts, support) | **$150 MXN** |
+| Sold to | Stores with rooftops, Carrier BluEdge policy customers in Mexico |
+| Margin for Carrier | **$1,267** per install / **$121** monthly per unit |
 
-### Simulating data
+Projected 5-year return: **3.9x ROI · 38% IRR · $2.76M NPV**. Next step: finished product and pilot with Carrier policy customers.
 
-With `npm run dev` running:
+## Try the demo (60 seconds, no hardware)
 
 ```bash
-npm run sim:seed      # clear the DB and backfill 25 min of both units (npm run sim:seed 60 for an hour)
-npm run sim:start     # stream new simulated readings every 2 s
-npm run sim:status    # simulator state + row counts
-npm run sim:stop      # stop — do this once real devices are posting
+npm install
+npm run dev          # dashboard at http://localhost:3000
+npm run sim:seed     # backfill 25 min of both units
+npm run sim:start    # stream live readings every 2 s
 ```
 
-The simulator stops when the server restarts; run `npm run sim:start` again (it continues
-from the last seed, or starts a fresh learning phase).
+Open the dashboard: HVAC-02 degrades live while HVAC-01 stays healthy — each against its own baseline.
+
+## Full technical setup
+
+All engineering docs live in `docs/`:
+
+- [`docs/setup.md`](docs/setup.md) — hardware, pin tables, firmware flashing, network, dashboard
+- [`docs/api.md`](docs/api.md) — REST API reference with curl examples
+- [`docs/demo-checklist.md`](docs/demo-checklist.md) — field day-of-demo checklist (hotspot, IPs, flash order, debugging)
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `SentinelBox/` | Gateway firmware (ESP32 + MPU6500 + embedded ANN) |
+| `HVAC01/` | HVAC-01 node firmware (ESP32-C3, PWM fan, INA219 + MAX6675, UART) |
+| `HVAC02/` | HVAC-02 node firmware (ESP32, fixed fan, INA219 + MAX6675, UART) |
+| `src/` | Next.js dashboard + REST API (`src/app/api/*`) |
+| `src/lib/sentinel/` | Shared validation, SQLite store, simulator, API client |
+| `ml/` | Neural-network training pipeline (retrainable, exports to ESP32) |
+| `data/` | Local SQLite database (git-ignored, auto-created) |
+| `docs/` | Technical setup, API reference, demo checklist |
+
+## Team
+
+Eduardo Pérez · Pedro Uribe · Alejandro Chio · Emiliano Méndez · Miguel Ángel Rodríguez — Carrier Hackathon 2026.
+
+Repository: https://github.com/ayexxxd/SentinelBox
