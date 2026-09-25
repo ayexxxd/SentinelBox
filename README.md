@@ -1,6 +1,6 @@
 # SentinelBox
 
-**Predictive maintenance at the edge for HVAC systems — Carrier Hackathon 2026.**
+**Predictive maintenance at the edge for HVAC systems — 🥇 1st place, Keep It Cool Hackathon (Carrier, 2026).**
 
 Every HVAC already measures current and temperature to *operate*. Nobody uses that data to *prevent* failures. SentinelBox taps into the signals every HVAC already has, complements them with new sensors integrated in the box (vibration), and learns each unit's normal behavior — so maintenance happens before performance drops, not after.
 
@@ -135,6 +135,6 @@ All engineering docs live in `docs/`:
 
 ## Team
 
-Eduardo Pérez · Pedro Uribe · Alejandro Chio · Emiliano Méndez · Miguel Ángel Rodríguez — Carrier Hackathon 2026.
+Eduardo Pérez · Pedro Uribe · Alejandro Chio · Emiliano Méndez · Miguel Ángel Rodríguez — 🥇 1st place, Keep It Cool Hackathon (Carrier, 2026).
 
 Repository: https://github.com/ayexxxd/SentinelBox
