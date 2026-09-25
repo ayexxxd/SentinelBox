@@ -5,21 +5,18 @@
 Every HVAC already measures current and temperature to *operate*. Nobody uses that data to *prevent* failures. SentinelBox taps into the signals every HVAC already has, complements them with new sensors integrated in the box (vibration), and learns each unit's normal behavior — so maintenance happens before performance drops, not after.
 
 ![SentinelBox device on a rooftop unit](docs/images/device-rooftop.png)
-*Placeholder: photo of the SentinelBox unit installed next to a rooftop HVAC.*
 
 ## The problem
 
 Most HVAC failures are detected when performance has already degraded. There is a window of opportunity — the first early signals — that goes unnoticed today. And a single fixed threshold for every unit makes it worse: false alarms trigger unnecessary visits, missed detections end in breakdowns.
 
 ![Equipment health curve showing the window of opportunity](docs/images/problem-curve.svg)
-*Placeholder: health-over-time curve — first signals → window of opportunity → detected failure.*
 
 ## The solution
 
 SentinelBox learns each unit's normal instead of applying one threshold to all of them. Two demo fans intentionally run different normal current profiles; the system still recognizes each one's normal independently.
 
 ![Dashboard showing both units with independent baselines](docs/images/dashboard-overview.png)
-*Placeholder: dashboard screenshot — HVAC-01 and HVAC-02 with their own baselines.*
 
 - **Edge processing on ESP32, no cloud required.** The decision runs on the gateway.
 - **One baseline per unit** (current, temperature, vibration), learned in ~90 s.
@@ -46,10 +43,8 @@ The gateway doesn't apply fixed thresholds — it runs a neural network, on-devi
 **4. Explain + persist.** An attribution pass re-runs the net with the other sensors held at baseline, so the dashboard can say *why* ("Cause: vibration, +0.18 mm/s vs normal (+16%)"). Health is EMA-smoothed (α=0.35) and the status flips only when the abnormal class persists **3 of the last 5 readings** — one isolated peak changes nothing.
 
 ![Health score bar and per-sensor cause breakdown](docs/images/health-why.png)
-*Placeholder: unit panel — health bar with the "Why" per-sensor cause breakdown.*
 
 ![Edge AI pipeline: sense → baseline → neural network → decision](docs/images/edge-pipeline.svg)
-*Placeholder: pipeline diagram — 100-sample window → features vs baseline → MLP → health + cause.*
 
 **Measured model performance** (`ml/artifacts/metrics.json`, held-out test set):
 
@@ -74,7 +69,6 @@ Measured on the prototype (normal operation vs. controlled perturbations: hair d
 | Detection performance — current / temperature / vibration | **6 / 3 / 57** |
 
 ![3D digital twin of the monitored building](docs/images/3d-twin.png)
-*Placeholder: 3D dashboard view with clickable rooftop units.*
 
 ## System architecture
 
